@@ -1,6 +1,7 @@
 # Use CoinCap API 3.0 to get data (https://pro.coincap.io/api-docs)
 
 import sys
+import os
 import requests
 import json
 
@@ -11,7 +12,11 @@ def main():
         'Ethereum': 'ethereum',
         'Tether': 'tether',
     }
-    api_key = "6f077700b46dfbfee732c95d8aea6f8318369fcb1d766d403cc84d47c05b4fb1"
+    
+    api_key = os.getenv("COINCAP_API_KEY")
+    if not api_key:
+        sys.exit("API key does not exist")
+        
     all_data = {}
 
     try:
