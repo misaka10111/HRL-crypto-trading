@@ -8,12 +8,12 @@ def main():
     data = data.set_index("Timestamp").sort_index()
 
     data_5min = data.resample("5T").agg({
-    "Open": "first",
-    "High": "max",
-    "Low": "min",
-    "Close": "last",
-    "Volume": "sum"
-})
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Volume": "sum"
+    }).dropna()
 
 
 if __name__ == "__main__":
