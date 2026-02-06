@@ -4,3 +4,6 @@
 2. We use pandas[(doc)](pandas.pydata.org/pandas-docs/stable/) library to resample data from 1-minute to 5-minute.
 - About year range: Early data quality and market mechanisms were unstable. Bitcoin entered a more mature and liquid market phase after 2016, with improved data quality and more stable market microstructure. This period also covers multiple market regimes (bull and bear markets), which improves the robustness and generalisability of the model. So we select data starting from 2017.
 - About intervals: Although 1-minute data is available, it contains substantial microstructure noise and significantly increases computational complexity. Resampling to 5-minute intervals should provides a better trade-off between information density and model stability, which is more suitable for medium-frequency trading strategies.
+
+## Environment
+1. try Gymnasium
