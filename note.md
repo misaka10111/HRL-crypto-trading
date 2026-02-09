@@ -7,3 +7,4 @@
 
 ## Environment
 1. try Gymnasium with a simple example using CartPole (current code is copied from https://gymnasium.farama.org/introduction/basic_usage/ for study purpose)
+2. learn to train an Q-learning agent with [Gymnasium's sample code](https://gymnasium.farama.org/introduction/train_agent/) for Blackjack
