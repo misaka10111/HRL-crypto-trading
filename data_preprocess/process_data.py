@@ -2,23 +2,29 @@ import pandas
 
 
 def main():
+    input_file = "btcusd_1-min_data.csv"
+    output_file = "btcusd_5-min_data.csv"
+    start_date = "2017-01-01"
+    frequency = "5min"
+    
     # header of the csv: Timestamp,Open,High,Low,Close,Volume
-    data = pandas.read_csv("btcusd_1-min_data.csv")
-    data["Timestamp"] = pandas.to_datetime(data["timestamp"])
-    data = data.set_index("Timestamp").sort_index()
+    data = pandas.read_csv(input_file)
+    data["Datetime"] = pandas.to_datetime(data["timestamp"], unit="s")
+    data = data.set_index("Datetime").sort_index()
 
     # Slice (start from 2017)
-    data = data.loc["2017-01-01":]
+    data = data.loc[start_date:]
 
     # Resample
-    data.resample("5T").agg({
+    resampled = data.resample(frequency).agg({
         "Open": "first",
         "High": "max",
         "Low": "min",
         "Close": "last",
         "Volume": "sum"
-    }).dropna().to_csv("btcusd_5-min_data.csv")
+    }).dropna().to_csv(output_file)
 
+    
 
 if __name__ == "__main__":
     main()
