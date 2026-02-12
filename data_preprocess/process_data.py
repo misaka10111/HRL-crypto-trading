@@ -9,7 +9,7 @@ def main():
     
     # header of the csv: Timestamp,Open,High,Low,Close,Volume
     data = pandas.read_csv(input_file)
-    data["Datetime"] = pandas.to_datetime(data["timestamp"], unit="s")
+    data["Datetime"] = pandas.to_datetime(data["Timestamp"], unit="s")
     data = data.set_index("Datetime").sort_index()
 
     # Slice (start from 2017)
