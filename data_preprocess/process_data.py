@@ -22,9 +22,18 @@ def main():
         "Low": "min",
         "Close": "last",
         "Volume": "sum"
-    }).dropna().to_csv(output_file)
+    })
 
+    # Forward fill missing Candlestick
+    resampled["Close"] = resampled["Close"].ffill()
+    resampled["Open"] = resampled["Open"].fillna(resampled["Close"])
+    resampled["High"] = resampled["High"].fillna(resampled["Close"])
+    resampled["Low"] = resampled["Low"].fillna(resampled["Close"])
+    resampled["Volume"] = resampled["Volume"].fillna(0)
     
+    resampled = resampled.dropna().to_csv(output_file)
+    print("File Saved")
+
 
 if __name__ == "__main__":
     main()
