@@ -1,4 +1,4 @@
 .env
-btcusd_1-min_data.csv
+*.csv
 *.ign.*
 __pycache__/*

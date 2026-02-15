@@ -32,7 +32,7 @@ def main():
     resampled["Volume"] = resampled["Volume"].fillna(0)
     
     resampled = resampled.dropna().to_csv(output_file)
-    print("File Saved")
+    print(f"Saved shape: {data.shape} to {output_file}")
 
 
 if __name__ == "__main__":
