@@ -1,5 +1,8 @@
+# Notes during Development
+
 ## Data Preprocess
-process: fetch data -> resample data -> build features
+
+- process: fetch data -> resample data -> build features
 - fetch_data.py can be used to fetch data by API in the future. For now, we get history data from Kaggle.
 
 1. We download [CSV files from Kaggle](https://www.kaggle.com/datasets/mczielinski/bitcoin-historical-data) for "select bitcoin exchanges for the time period of Jan 2012 to Present (Measured by UTC day), with minute to minute updates of OHLC (Open, High, Low, Close) and Volume in BTC".
@@ -12,5 +15,6 @@ process: fetch data -> resample data -> build features
 3.
 
 ## Environment
-1. try Gymnasium with a simple example using CartPole (current code is copied from https://gymnasium.farama.org/introduction/basic_usage/ for study purpose)
+
+1. try Gymnasium with a simple example using CartPole (current code is copied from <https://gymnasium.farama.org/introduction/basic_usage/> for study purpose)
 2. learn to train an Q-learning agent with [Gymnasium's sample code](https://gymnasium.farama.org/introduction/train_agent/) for Blackjack
