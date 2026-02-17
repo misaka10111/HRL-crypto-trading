@@ -53,6 +53,70 @@ class SacStandard(gym.Env):
         self.previous_portfolio_value = self.initial_balance
         
         return self._get_observation(), self._get_info()
+    
+    def step(self, action: np.ndarray):
+        # Parse actions and normalize them
+        target_weights = np.clip(action, 0.0, 1.0)
+        weight_sum = np.sum(target_weights)
+        if weight_sum > 0:
+            target_weights = target_weights / weight_sum
+        else:
+            target_weights = np.zeros(self.total_assets)
+            target_weights[0] = 1.0
+
+        current_prices = self._get_current_prices()
+        self.previous_portfolio_value = self.portfolio_value
+        current_crypto_values = self.crypto_holdings * current_prices
+        
+        # trading
+        target_values = target_weights * self.portfolio_value
+        target_crypto_values = target_values[1:] 
+        crypto_value_diffs = target_crypto_values - current_crypto_values
+
+        # sell
+        for i in range(self.num_crypto_assets):
+            if crypto_value_diffs[i] < 0:
+                trade_amount_fiat = abs(crypto_value_diffs[i])
+                crypto_to_sell = trade_amount_fiat / current_prices[i]
+                crypto_to_sell = min(crypto_to_sell, self.crypto_holdings[i])
+                
+                gross_fiat = crypto_to_sell * current_prices[i]
+                net_fiat = gross_fiat * (1 - self.commission_fee_percent)
+                
+                self.crypto_holdings[i] -= crypto_to_sell
+                self.cash_balance += net_fiat
+
+        # buy
+        for i in range(self.num_crypto_assets):
+            if crypto_value_diffs[i] > 0:
+                trade_amount_fiat = crypto_value_diffs[i]
+                trade_amount_fiat = min(trade_amount_fiat, self.cash_balance)
+                
+                if trade_amount_fiat > 0:
+                    net_fiat = trade_amount_fiat * (1 - self.commission_fee_percent)
+                    crypto_bought = net_fiat / current_prices[i]
+                    
+                    self.cash_balance -= trade_amount_fiat
+                    self.crypto_holdings[i] += crypto_bought
+
+        # update
+        self.current_step += 1
+        self.portfolio_value = self.cash_balance + np.sum(self.crypto_holdings * current_prices)
+
+        # calculate reward
+        if self.previous_portfolio_value > 0:
+            log_return = math.log(self.portfolio_value / self.previous_portfolio_value)
+            step_reward = log_return * 100.0  
+        else:
+            step_reward = -1.0
+
+        # termination
+        terminated = self.current_step >= len(self.df) - 1
+        truncated = False
+        if self.portfolio_value < self.initial_balance * 0.1:
+            terminated = True
+
+        return self._get_observation(), step_reward, terminated, truncated, self._get_info()
 
     def _get_observation(self):
         current_features = self.df.iloc[self.current_step].values
