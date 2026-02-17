@@ -22,3 +22,7 @@
     - build a custom trading environment from scratch by inheriting `gymnasium.Env`.
     - use `spaces.Box` to define continuous state and action spaces.
     - standardizing the `reset()` method to return `(obs, info)` is strictly required by newer Gymnasium versions.
+4. Core trading logic and reward design:
+   - converting raw continuous actions from the agent into portfolio weights requires normalization (clipping `[0, 1]` and dividing by the sum) to ensure weights always sum to exactly 1
+   - always execute "sell" actions before "buy" actions to free up cash balance, otherwise the environment might try to spend money it doesn't have
+   - using log returns for step rewards is mathematically preferred over simple returns to maintain time-additivity, but need to care log of zero or negative values
