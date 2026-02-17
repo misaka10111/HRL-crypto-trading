@@ -18,3 +18,7 @@
 
 1. try Gymnasium with a simple example using CartPole (current code is copied from <https://gymnasium.farama.org/introduction/basic_usage/> for study purpose)
 2. learn to train an Q-learning agent with [Gymnasium's sample code](https://gymnasium.farama.org/introduction/train_agent/) for Blackjack
+3. [Custom Environment Skeleton](https://gymnasium.farama.org/tutorials/gymnasium_basics/environment_creation/):
+    - build a custom trading environment from scratch by inheriting `gymnasium.Env`.
+    - use `spaces.Box` to define continuous state and action spaces.
+    - standardizing the `reset()` method to return `(obs, info)` is strictly required by newer Gymnasium versions.
