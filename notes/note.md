@@ -26,3 +26,6 @@
    - converting raw continuous actions from the agent into portfolio weights requires normalization (clipping `[0, 1]` and dividing by the sum) to ensure weights always sum to exactly 1
    - always execute "sell" actions before "buy" actions to free up cash balance, otherwise the environment might try to spend money it doesn't have
    - using log returns for step rewards is mathematically preferred over simple returns to maintain time-additivity, but need to care log of zero or negative values
+5. Stable-Baselines3 callbacks and metrics logging:
+   - custom callbacks (inheriting [`BaseCallback` from SB3](https://stable-baselines3.readthedocs.io/en/master/guide/callbacks.html)) are the cleanest way to log domain-specific metrics (like Annualized Sharpe Ratio) to TensorBoard without polluting the core environment step logic
+   - in vectorized environments, when an episode ends (`done=True`), the environment automatically resets. The `info` dict will contain the new state's info, not the final state's, so remember to extract the true final metrics from `infos["terminal_info"]`
