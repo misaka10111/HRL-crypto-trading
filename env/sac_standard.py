@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import pandas as pd
+from stable_baselines3.common.callbacks import BaseCallback
 
 
 class SacStandard(gym.Env):
@@ -131,3 +132,41 @@ class SacStandard(gym.Env):
     def _get_current_prices(self):
         current_row = self.df.iloc[self.current_step]
         return np.array([current_row['Close']], dtype=np.float32)
+
+
+class TradingMetricsCallback(BaseCallback):
+    def __init__(self, steps_per_year=105120, verbose=0):
+        super(TradingMetricsCallback, self).__init__(verbose)
+        self.steps_per_year = steps_per_year
+        self.episode_returns = []
+        self.last_portfolio_value = 10000.0
+
+    def _on_step(self) -> bool:
+        step_reward = self.locals.get("rewards", [0.0])[0]
+        done = self.locals.get("dones", [False])[0]
+        infos = self.locals.get("infos", [{}])[0]
+
+        self.episode_returns.append(step_reward)
+
+        if "terminal_info" in infos:
+            self.last_portfolio_value = infos["terminal_info"].get("portfolio_value", self.last_portfolio_value)
+        elif "portfolio_value" in infos:
+            self.last_portfolio_value = infos["portfolio_value"]
+
+        if done:
+            final_portfolio_value = self.last_portfolio_value
+            
+            returns_array = np.array(self.episode_returns)
+            if len(returns_array) > 1 and np.std(returns_array) > 0:
+                mean_return = np.mean(returns_array)
+                std_return = np.std(returns_array)
+                annualized_sharpe = (mean_return / std_return) * np.sqrt(self.steps_per_year)
+            else:
+                annualized_sharpe = 0.0
+
+            self.logger.record("trading/final_portfolio_value", final_portfolio_value)
+            self.logger.record("trading/annualized_sharpe_ratio", annualized_sharpe)
+
+            self.episode_returns = []
+
+        return True
