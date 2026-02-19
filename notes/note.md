@@ -29,3 +29,6 @@
 5. Stable-Baselines3 callbacks and metrics logging:
    - custom callbacks (inheriting [`BaseCallback` from SB3](https://stable-baselines3.readthedocs.io/en/master/guide/callbacks.html)) are the cleanest way to log domain-specific metrics (like Annualized Sharpe Ratio) to TensorBoard without polluting the core environment step logic
    - in vectorized environments, when an episode ends (`done=True`), the environment automatically resets. The `info` dict will contain the new state's info, not the final state's, so remember to extract the true final metrics from `infos["terminal_info"]`
+6. Training pipeline and normalization (`VecNormalize`):
+   - time-series data splitting must follow chronological order (first 80% train, last 20% test) to prevent look-ahead bias
+   - wrap the environment in `VecNormalize` to keep observations and rewards centered, preventing gradient explosion or `NaN` errors during training; moving average statistics need to save alongside the model
