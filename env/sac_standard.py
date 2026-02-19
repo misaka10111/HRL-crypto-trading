@@ -5,6 +5,9 @@ from gymnasium import spaces
 import numpy as np
 import pandas as pd
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3 import SAC
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 class SacStandard(gym.Env):
@@ -170,3 +173,51 @@ class TradingMetricsCallback(BaseCallback):
             self.episode_returns = []
 
         return True
+    
+
+if __name__ == "__main__":
+    print("loading data...")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(BASE_DIR, 'btcusd_5-min_data.csv')
+    df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True)
+    df = df.sort_index()
+
+    # training set: 80%
+    split_idx = int(len(df) * 0.8)
+    train_df = df.iloc[:split_idx].reset_index(drop=True)
+    test_df = df.iloc[split_idx:].reset_index(drop=True)
+    
+    print(f"data volume: {len(df)} steps")
+    print(f"training set volume: {len(train_df)} steps ; testing set volume: {len(test_df)} steps")
+
+    # Instantiate env
+    base_env = SacStandard(train_df, initial_balance=10000.0)
+    base_env = Monitor(base_env)
+    vec_env = DummyVecEnv([lambda: base_env])
+    
+    # Automatically normalize features and rewards
+    env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
+
+    # training
+    trading_callback = TradingMetricsCallback(steps_per_year=105120)
+    
+    model = SAC(
+        "MlpPolicy", 
+        env, 
+        learning_rate=3e-4,
+        batch_size=256,
+        verbose=1, 
+        tensorboard_log="./tensorboard/sac_standard/"
+    )
+    
+    print("training...")
+    model.learn(
+        total_timesteps=len(train_df) * 3, 
+        callback=trading_callback,
+        log_interval=1
+    )
+    
+    # save
+    print("training finished, saving...")
+    model.save("./model/sac_baseline_sac")
+    env.save("./model/vec_normalize_sac.pkl")
