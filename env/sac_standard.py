@@ -219,5 +219,5 @@ if __name__ == "__main__":
     
     # save
     print("training finished, saving...")
-    model.save("./model/sac_baseline_sac")
+    model.save("./model/standard_sac")
     env.save("./model/vec_normalize_sac.pkl")
