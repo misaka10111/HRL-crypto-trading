@@ -2,3 +2,4 @@
 *.csv
 *.ign.*
 __pycache__/*
+/tensorboard/
