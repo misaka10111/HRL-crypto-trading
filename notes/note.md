@@ -32,3 +32,21 @@
 6. Training pipeline and normalization (`VecNormalize`):
    - time-series data splitting must follow chronological order (first 80% train, last 20% test) to prevent look-ahead bias
    - wrap the environment in `VecNormalize` to keep observations and rewards centered, preventing gradient explosion or `NaN` errors during training; moving average statistics need to save alongside the model
+
+## Tensorboard Figures
+
+- rollout
+  - ep_len_mean: Average episode length per rollout, measures how many steps the agent takes per episode on average. An increase typically means the agent learned to survive longer; a decrease may indicate a policy shift or early termination.
+  - ep_rew_mean: Average episode reward per rollout, the most important metric, reflecting overall agent performance. Ideally it rises steadily and converges; prolonged oscillation or decline suggests instability.
+- time
+  - fps: Training speed (frames per second), reflects computational efficiency — how many environment steps are processed per second. A sudden drop may indicate a computational bottleneck.
+- trading
+  - annualized_sharpe_ratio: Measures return per unit of risk. Higher is better; persistently negative values suggest the strategy takes excessive risk without sufficient return.
+  - final_portfolio_value: Total asset value at the end of each episode, directly reflecting profit/loss. High variance suggests an unstable strategy; ideally it converges upward over time.
+- train
+  - actor_loss: Actor network loss, the optimization objective for the Actor network. Unlike supervised learning, Actor loss need not decrease monotonically; only persistent growth or violent oscillation is concerning.
+  - critic_loss: Critic network loss, measures how accurately the Critic predicts Q-values. It's naturally high early on and should decrease and stabilize; persistently high values indicate inaccurate value estimation.
+  - ent_coef: Entropy coefficient, SAC's automatic temperature parameter controlling policy randomness. It's typically larger early on to encourage exploration, and should gradually decrease as the policy matures.
+  - ent_coef_loss: Entropy coefficient loss, the loss signal used to auto-tune the entropy coefficient, reflecting the gap between current and target policy entropy. Oscillation around zero is normal behavior.
+  - learning_rate: Controls the step size of each parameter update. A fixed learning rate appears as a flat horizontal line; scheduled rates decay over time. Too large causes instability; too small causes slow convergence.
+  
