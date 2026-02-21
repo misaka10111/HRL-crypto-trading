@@ -32,6 +32,10 @@
 6. Training pipeline and normalization (`VecNormalize`):
    - time-series data splitting must follow chronological order (first 80% train, last 20% test) to prevent look-ahead bias
    - wrap the environment in `VecNormalize` to keep observations and rewards centered, preventing gradient explosion or `NaN` errors during training; moving average statistics need to save alongside the model
+7. Adding risk management to SAC:
+   - pure return-seeking agents lack the concept of "capital preservation". In TensorBoard figures, they often take on massive uncompensated volatility (deeply negative Sharpe ratio) and speedrun bankruptcy by quickly crashing the portfolio to the 10% early termination threshold.
+   - calculating the current drawdown from a continuously updated `peak_portfolio_value` and squaring it (`current_drawdown ** 2`) as a penalty.  It mathematically tolerates minor, normal market noise but heavily punishes severe drawdowns, forcing the agent to learn to cut losses.
+   - state management: when reward calculations depend on historical variables (like the peak portfolio value), it is strictly required to manually reset them back to their defaults inside the `reset()` method. Forgetting this causes state leakage across episodes, severely confusing the agent with penalties carried over from a previous "lifetime".
 
 ## Tensorboard Figures
 
@@ -49,4 +53,3 @@
   - ent_coef: Entropy coefficient, SAC's automatic temperature parameter controlling policy randomness. It's typically larger early on to encourage exploration, and should gradually decrease as the policy matures.
   - ent_coef_loss: Entropy coefficient loss, the loss signal used to auto-tune the entropy coefficient, reflecting the gap between current and target policy entropy. Oscillation around zero is normal behavior.
   - learning_rate: Controls the step size of each parameter update. A fixed learning rate appears as a flat horizontal line; scheduled rates decay over time. Too large causes instability; too small causes slow convergence.
-  

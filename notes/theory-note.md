@@ -34,6 +34,8 @@ epsilon-greedy strategy:
 
 - [PPO](https://arxiv.org/abs/1707.06347): Proximal Policy Optimization algorithms are a family of policy gradient methods that use a surrogate objective function to enable stable and efficient policy updates by keeping the new policy close to the old policy.
 - [SAC](https://arxiv.org/abs/1812.05905v2): Soft Actor-Critic (SAC) is an off-policy actor-critic reinforcement learning algorithm based on the maximum entropy framework, which optimizes a stochastic policy to maximize both expected return and policy entropy.
+  - Actor network: is responsible for "making decisions" — given the current state, it outputs the action to take (or a probability distribution over actions). It is the policy itself, and its training goal is to find action choices that maximize long-term reward.
+  - Critic network: is responsible for "making evaluations" — it estimates the long-term value (Q-value) of a state or state-action pair. It doesn't decide actions directly; instead it tells the Actor "how good was that choice", guiding the Actor to improve. SAC typically uses two Critic networks and takes the minimum to reduce overestimation.
 - PPO limit strategy variation; SAC encourage strategy to remain random
 
 - on-policy: data from current policy
@@ -42,6 +44,7 @@ epsilon-greedy strategy:
 - MDP: Markov Decision Process, used to describe "how to make continuous decisions in an uncertain environment"
   - (S,A,P,R,γ): state, action, transition, reward, discount factor
 
+- step: Agent observes state → executes one action → environment returns new state and reward
 - batch: the amount of data used in one training step (e.g., 32 samples)  
 - iteration: one iteration is counted each time a batch is trained  
 - epoch: the number of times the entire training dataset (all batches) is passed through once
