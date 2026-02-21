@@ -10,14 +10,14 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
-class SacStandard(gym.Env):
+class SacRiskAware(gym.Env):
     """
     Gymnasium environment, for SB3
     """
     metadata = {'render_modes': ['human', 'console']}
 
     def __init__(self, df: pd.DataFrame, initial_balance=10000.0):
-        super(SacStandard, self).__init__()
+        super(SacRiskAware, self).__init__()
         
         self.df = df
         self.initial_balance = initial_balance
@@ -47,6 +47,11 @@ class SacStandard(gym.Env):
         self.portfolio_value = self.initial_balance
         self.previous_portfolio_value = self.initial_balance
 
+        # Record the historical maximum asset for calculating the current drawdown
+        self.peak_portfolio_value = self.initial_balance 
+        # Risk penalty factor, controlling the model’s conservativeness
+        self.risk_penalty_weight = 0.5
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
@@ -55,6 +60,7 @@ class SacStandard(gym.Env):
         self.crypto_holdings = np.zeros(self.num_crypto_assets)
         self.portfolio_value = self.initial_balance
         self.previous_portfolio_value = self.initial_balance
+        self.peak_portfolio_value = self.initial_balance  # Reset the historical maximum asset
         
         return self._get_observation(), self._get_info()
     
@@ -110,7 +116,22 @@ class SacStandard(gym.Env):
         # calculate reward
         if self.previous_portfolio_value > 0:
             log_return = math.log(self.portfolio_value / self.previous_portfolio_value)
-            step_reward = log_return * 100.0  
+            base_reward = log_return * 100.0  
+            
+            # Drawdown Penalty
+            # update the historical maximum asset
+            if self.portfolio_value > self.peak_portfolio_value:
+                self.peak_portfolio_value = self.portfolio_value
+                
+            # drawdown percentage
+            current_drawdown = (self.peak_portfolio_value - self.portfolio_value) / self.peak_portfolio_value
+            
+            # tolerate small drawdowns, averse to large drawdowns
+            drawdown_penalty = self.risk_penalty_weight * (current_drawdown ** 2) * 100.0
+            
+            # final reward
+            step_reward = base_reward - drawdown_penalty
+            
         else:
             step_reward = -1.0
 
@@ -191,7 +212,7 @@ if __name__ == "__main__":
     print(f"training set volume: {len(train_df)} steps ; testing set volume: {len(test_df)} steps")
 
     # Instantiate env
-    base_env = SacStandard(train_df, initial_balance=10000.0)
+    base_env = SacRiskAware(train_df, initial_balance=10000.0)
     base_env = Monitor(base_env)
     vec_env = DummyVecEnv([lambda: base_env])
     
@@ -207,7 +228,7 @@ if __name__ == "__main__":
         learning_rate=3e-4,
         batch_size=256,
         verbose=1, 
-        tensorboard_log="./tensorboard/sac_standard/"
+        tensorboard_log="./tensorboard/sac_risk_aware/"
     )
     
     print("training...")
@@ -219,5 +240,5 @@ if __name__ == "__main__":
     
     # save
     print("training finished, saving...")
-    model.save("./model/standard_sac")
-    env.save("./model/vec_normalize_sac.pkl")
+    model.save("./model/sac_risk")
+    env.save("./model/vec_normalize_sac_risk.pkl")
