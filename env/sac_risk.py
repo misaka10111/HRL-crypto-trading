@@ -51,6 +51,8 @@ class SacRiskAware(gym.Env):
         self.peak_portfolio_value = self.initial_balance 
         # Risk penalty factor, controlling the model’s conservativeness
         self.risk_penalty_weight = 0.5
+        # Record drawdown from previous step
+        self.previous_drawdown = 0.0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -61,6 +63,7 @@ class SacRiskAware(gym.Env):
         self.portfolio_value = self.initial_balance
         self.previous_portfolio_value = self.initial_balance
         self.peak_portfolio_value = self.initial_balance  # Reset the historical maximum asset
+        self.previous_drawdown = 0.0  # Reset historical drawdown record
         
         return self._get_observation(), self._get_info()
     
@@ -125,9 +128,16 @@ class SacRiskAware(gym.Env):
                 
             # drawdown percentage
             current_drawdown = (self.peak_portfolio_value - self.portfolio_value) / self.peak_portfolio_value
+            drawdown_delta = current_drawdown - self.previous_drawdown
             
-            # tolerate small drawdowns, averse to large drawdowns
-            drawdown_penalty = self.risk_penalty_weight * (current_drawdown ** 2) * 100.0
+            if drawdown_delta > 0:
+                # Punishment is only given when the drawdowns worsens
+                drawdown_penalty = self.risk_penalty_weight * drawdown_delta * 100.0
+            else:
+                drawdown_penalty = 0.0
+                
+            # for next step
+            self.previous_drawdown = current_drawdown
             
             # final reward
             step_reward = base_reward - drawdown_penalty
