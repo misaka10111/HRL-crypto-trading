@@ -37,6 +37,11 @@
    - calculating the current drawdown from a continuously updated `peak_portfolio_value` and squaring it (`current_drawdown ** 2`) as a penalty.  It mathematically tolerates minor, normal market noise but heavily punishes severe drawdowns, forcing the agent to learn to cut losses.
    - state management: when reward calculations depend on historical variables (like the peak portfolio value), it is strictly required to manually reset them back to their defaults inside the `reset()` method. Forgetting this causes state leakage across episodes, severely confusing the agent with penalties carried over from a previous "lifetime".
 8. Fix penalty problem: The previous absolute squared calculation caused two major issues. First, squaring a small fractional drawdown value (e.g., 0.001) resulted in a vanishingly small penalty (0.000001), effectively neutralizing the risk control signal for the neural network. Second, punishing the agent continuously for historical drawdowns, even when its current actions were successfully recovering the portfolio value, provided conflicting reward signals. By switching to a linear, delta-based penalty, the agent receives precise, proportionate, and immediate negative feedback solely for actions that directly cause the portfolio to shrink.
+9. Why risk-aware model underperform the standard baseline:
+   - the base state features (raw 5-min prices) lack strong predictive signals
+   - when an environment is fundamentally unprofitable (high fees + noisy data), an aggressively penalized agent becomes terrified. Instead of learning a smart strategy, it realizes that any action leads to drawdown penalties.
+   - risk management is just there to smooth the curve of an already profitable strategy
+   - next step: use featured data to train the model
 
 ## Tensorboard Figures
 
