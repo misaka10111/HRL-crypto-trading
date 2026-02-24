@@ -31,7 +31,7 @@ def main():
     data['Day_Sin'] = np.sin(2 * np.pi * data.index.dayofweek / 7.0)
     data['Day_Cos'] = np.cos(2 * np.pi * data.index.dayofweek / 7.0)
 
-    # drop not stationary features
+    # drop non-stationary features
     cols_to_drop.extend(['Open', 'High', 'Low', 'Volume'])
     data = data.drop(columns=cols_to_drop)
 

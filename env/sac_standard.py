@@ -7,7 +7,7 @@ import pandas as pd
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
 
 class SacStandard(gym.Env):
@@ -16,17 +16,22 @@ class SacStandard(gym.Env):
     """
     metadata = {'render_modes': ['human', 'console']}
 
-    def __init__(self, df: pd.DataFrame, initial_balance=10000.0):
+    def __init__(self, df: pd.DataFrame, initial_balance=10000.0, max_steps=2000):
         super(SacStandard, self).__init__()
         
         self.df = df
         self.initial_balance = initial_balance
+        self.max_steps = max_steps # max step of each episode
         self.num_crypto_assets = 1
         self.total_assets = self.num_crypto_assets + 1  # BTC + USDT
         self.commission_fee_percent = 0.001  # 0.1%
         
-        # Observation Space
-        num_features = len(self.df.columns)
+        # Separate Close price from features
+        self.price_data = self.df['Close'].values
+        self.feature_data = self.df.drop(columns=['Close']).values
+        
+        # Observation Space 
+        num_features = self.feature_data.shape[1]  # Excludes the absolute Close price
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, 
             shape=(self.num_crypto_assets, num_features), 
@@ -41,6 +46,7 @@ class SacStandard(gym.Env):
         )
 
         # Internal State Variables
+        self.start_step = 0
         self.current_step = 0
         self.cash_balance = self.initial_balance
         self.crypto_holdings = np.zeros(self.num_crypto_assets)
@@ -50,7 +56,10 @@ class SacStandard(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
-        self.current_step = 0
+        # random starting point ensures multi-threaded exploration
+        max_start_idx = len(self.df) - self.max_steps - 1
+        self.start_step = np.random.randint(0, max_start_idx) if max_start_idx > 0 else 0
+        self.current_step = self.start_step        
         self.cash_balance = self.initial_balance
         self.crypto_holdings = np.zeros(self.num_crypto_assets)
         self.portfolio_value = self.initial_balance
@@ -115,16 +124,19 @@ class SacStandard(gym.Env):
             step_reward = -1.0
 
         # termination
-        terminated = self.current_step >= len(self.df) - 1
+        steps_taken = self.current_step - self.start_step
+        terminated = steps_taken >= self.max_steps or self.current_step >= len(self.df) - 1
         truncated = False
+
         if self.portfolio_value < self.initial_balance * 0.1:
             terminated = True
+            step_reward -= 100.0 # heavy penalty for bankruptcy
 
         return self._get_observation(), step_reward, terminated, truncated, self._get_info()
 
     def _get_observation(self):
-        current_features = self.df.iloc[self.current_step].values
-        return current_features.reshape(self.num_crypto_assets, -1).astype(np.float32)
+        # feed stationary features
+        return self.feature_data[self.current_step].reshape(self.num_crypto_assets, -1).astype(np.float32)
 
     def _get_info(self):
         return {
@@ -133,8 +145,7 @@ class SacStandard(gym.Env):
         }
     
     def _get_current_prices(self):
-        current_row = self.df.iloc[self.current_step]
-        return np.array([current_row['Close']], dtype=np.float32)
+        return np.array([self.price_data[self.current_step]], dtype=np.float32)
 
 
 class TradingMetricsCallback(BaseCallback):
@@ -174,11 +185,19 @@ class TradingMetricsCallback(BaseCallback):
 
         return True
     
+def make_env(df, seed):
+    # generating parallel environments
+    def _init():
+        env = SacStandard(df, initial_balance=10000.0, max_steps=2000)
+        env = Monitor(env)
+        env.action_space.seed(seed)
+        return env
+    return _init
 
 if __name__ == "__main__":
     print("loading data...")
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    data_path = os.path.join(BASE_DIR, 'btcusd_5-min_data.csv')
+    data_path = os.path.join(BASE_DIR, 'btcusd_5-min_features.csv')
     df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True)
     df = df.sort_index()
 
@@ -190,22 +209,26 @@ if __name__ == "__main__":
     print(f"data volume: {len(df)} steps")
     print(f"training set volume: {len(train_df)} steps ; testing set volume: {len(test_df)} steps")
 
-    # Instantiate env
-    base_env = SacStandard(train_df, initial_balance=10000.0)
-    base_env = Monitor(base_env)
-    vec_env = DummyVecEnv([lambda: base_env])
+    # multi-process vectorized environments
+    num_cpu = 8 
+    vec_env = SubprocVecEnv([make_env(train_df, i) for i in range(num_cpu)])
     
-    # Automatically normalize features and rewards
+    # automatic normalization
     env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
-    # training
+    # callback
     trading_callback = TradingMetricsCallback(steps_per_year=105120)
     
+    # optimize training
     model = SAC(
         "MlpPolicy", 
         env, 
         learning_rate=3e-4,
-        batch_size=256,
+        batch_size=1024,
+        buffer_size=500000,
+        train_freq=(8, "step"),  # train after every 8 collected steps
+        gradient_steps=4,
+        device="cuda",  # GPU
         verbose=1, 
         tensorboard_log="./tensorboard/sac_standard/"
     )
@@ -214,7 +237,7 @@ if __name__ == "__main__":
     model.learn(
         total_timesteps=len(train_df) * 3, 
         callback=trading_callback,
-        log_interval=1
+        log_interval=4
     )
     
     # save
