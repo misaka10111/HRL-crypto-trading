@@ -8,7 +8,6 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
-from collections import deque
 
 class SacRiskAware(gym.Env):
     """
@@ -54,7 +53,8 @@ class SacRiskAware(gym.Env):
         
         # Risk Variables
         self.peak_portfolio_value = self.initial_balance
-        self.returns_history = deque(maxlen=100) # Track recent returns for volatility/downside deviation
+        self.risk_penalty_weight = 0.5
+        self.previous_drawdown = 0.0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -69,7 +69,7 @@ class SacRiskAware(gym.Env):
         self.previous_portfolio_value = self.initial_balance
         
         self.peak_portfolio_value = self.initial_balance
-        self.returns_history.clear()
+        self.previous_drawdown = 0.0
         
         return self._get_observation(), self._get_info()
     
@@ -121,13 +121,8 @@ class SacRiskAware(gym.Env):
         # update
         self.current_step += 1
         self.portfolio_value = self.cash_balance + np.sum(self.crypto_holdings * current_prices)
-        
-        # update peak value
-        if self.portfolio_value > self.peak_portfolio_value:
-            self.peak_portfolio_value = self.portfolio_value
 
         # calculate reward
-        step_reward = 0.0
         if self.previous_portfolio_value > 0:
             log_return = math.log(self.portfolio_value / self.previous_portfolio_value)
             base_reward = log_return * 100.0  
@@ -152,7 +147,7 @@ class SacRiskAware(gym.Env):
             
             # final reward
             step_reward = base_reward - drawdown_penalty
-            
+                
         else:
             step_reward = -1.0
 
