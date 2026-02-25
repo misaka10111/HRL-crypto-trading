@@ -79,3 +79,42 @@ class GoalConditionedCryptoEnv(gym.Env):
 
     def _get_current_prices(self):
         return np.array([self.price_data[self.current_step]], dtype=np.float32)
+    
+    # generate random high-level instruction
+    def _sample_random_goal(self):
+        if np.random.rand() < 0.2:
+            w = np.zeros(self.total_assets)
+            w[0] = 1.0 # 20% full cash
+            return w.astype(np.float32)
+        elif np.random.rand() < 0.2:
+            w = np.zeros(self.total_assets)
+            w[1] = 1.0 # 20% full BTC
+            return w.astype(np.float32)
+            
+        random_weights = np.random.dirichlet(np.ones(self.total_assets), size=1)[0]
+        return random_weights.astype(np.float32)
+    
+    def _get_actual_weights(self, current_prices):
+        if self.portfolio_value <= 0:
+            w = np.zeros(self.total_assets)
+            w[0] = 1.0
+            return w.astype(np.float32)
+            
+        crypto_values = self.crypto_holdings * current_prices
+        actual_weights = np.zeros(self.total_assets)
+        actual_weights[0] = self.cash_balance / self.portfolio_value
+        actual_weights[1:] = crypto_values / self.portfolio_value
+        return actual_weights.astype(np.float32)
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.current_step = 0
+        self.cash_balance = self.initial_balance
+        self.crypto_holdings = np.zeros(self.num_crypto_assets)
+        self.portfolio_value = self.initial_balance
+        
+        self.current_goal_weights = self._sample_random_goal()
+        
+        return self._get_observation(), self._get_info()
+    
+    
