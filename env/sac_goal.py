@@ -117,4 +117,88 @@ class GoalConditionedCryptoEnv(gym.Env):
         
         return self._get_observation(), self._get_info()
     
+    def step(self, action: np.ndarray):
+        # Simulate high-level intervention
+        if self.current_step > 0 and self.current_step % self.goal_change_freq == 0:
+            self.current_goal_weights = self._sample_random_goal()
+
+        # Parse the low-level Agent's execution action
+        execution_weights = np.clip(action, 0.0, 1.0)
+        weight_sum = np.sum(execution_weights)
+        if weight_sum > 0:
+            execution_weights = execution_weights / weight_sum
+        else:
+            execution_weights = np.zeros(self.total_assets)
+            execution_weights[0] = 1.0
+
+        current_prices = self._get_current_prices()
+        current_crypto_values = self.crypto_holdings * current_prices
+        
+        # Compute rebalancing amounts and execute trades
+        target_values = execution_weights * self.portfolio_value
+        target_crypto_values = target_values[1:] 
+        crypto_value_diffs = target_crypto_values - current_crypto_values
+
+        trade_cost_fiat = 0.0 # absolute friction cost
+
+        # Sell
+        for i in range(self.num_crypto_assets):
+            if crypto_value_diffs[i] < 0:
+                trade_amount_fiat = abs(crypto_value_diffs[i])
+                crypto_to_sell = trade_amount_fiat / current_prices[i]
+                crypto_to_sell = min(crypto_to_sell, self.crypto_holdings[i])
+                
+                gross_fiat = crypto_to_sell * current_prices[i]
+                fee = gross_fiat * self.commission_fee_percent
+                net_fiat = gross_fiat - fee
+                
+                self.crypto_holdings[i] -= crypto_to_sell
+                self.cash_balance += net_fiat
+                trade_cost_fiat += fee
+
+        # Buy
+        for i in range(self.num_crypto_assets):
+            if crypto_value_diffs[i] > 0:
+                trade_amount_fiat = crypto_value_diffs[i]
+                trade_amount_fiat = min(trade_amount_fiat, self.cash_balance)
+                
+                if trade_amount_fiat > 0:
+                    fee = trade_amount_fiat * self.commission_fee_percent
+                    net_fiat = trade_amount_fiat - fee
+                    crypto_bought = net_fiat / current_prices[i]
+                    
+                    self.cash_balance -= trade_amount_fiat
+                    self.crypto_holdings[i] += crypto_bought
+                    trade_cost_fiat += fee
+
+        # Update
+        self.current_step += 1
+        self.portfolio_value = self.cash_balance + np.sum(self.crypto_holdings * current_prices)
+
+        # Reward
+        actual_weights_after_trade = self._get_actual_weights(current_prices)
+        
+        # Penalty 1: Tracking error
+        tracking_error = np.sum(np.abs(actual_weights_after_trade - self.current_goal_weights))
+        
+        # Tolerance threshold
+        if tracking_error < 0.01:
+            tracking_error = 0.0
+        
+        # Penalty 2: Transaction friction
+        cost_penalty = trade_cost_fiat / max(self.portfolio_value, 1.0)
+        
+        # balance "closely tracking the goal" against "minimizing transaction fees"
+        step_reward = - (tracking_error * 2.0) - (cost_penalty * 100.0)
+
+        # Termination 
+        terminated = self.current_step >= len(self.df) - 1
+        truncated = False
+        if self.portfolio_value < self.initial_balance * 0.1:
+            terminated = True
+
+        info = self._get_info()
+        info["tracking_error"] = tracking_error
+
+        return self._get_observation(), step_reward, terminated, truncated, info
     
