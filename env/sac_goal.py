@@ -2,6 +2,9 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import pandas as pd
+import os
+from stable_baselines3 import SAC
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
 
 class GoalConditionedCryptoEnv(gym.Env):
@@ -202,3 +205,62 @@ class GoalConditionedCryptoEnv(gym.Env):
 
         return self._get_observation(), step_reward, terminated, truncated, info
     
+def make_env(df, seed, custom_mean, custom_std):
+    def _init():
+        env = GoalConditionedCryptoEnv(df, initial_balance=10000.0, custom_mean=custom_mean, custom_std=custom_std)
+        from stable_baselines3.common.monitor import Monitor
+        env = Monitor(env)
+        env.action_space.seed(seed)
+        return env
+    return _init
+
+
+if __name__ == "__main__":
+    print("loading data...")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(BASE_DIR, 'btcusd_5-min_features.csv')
+    df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True)
+    df = df.sort_index()
+
+    split_idx = int(len(df) * 0.8)
+    train_df = df.iloc[:split_idx].reset_index(drop=True)
+    test_df = df.iloc[split_idx:].reset_index(drop=True)
+    
+    print(f"data volume: {len(df)} steps")
+    print(f"training set volume: {len(train_df)} steps ; testing set volume: {len(test_df)} steps")
+
+    train_feature_df = train_df.drop(columns=['Close'])
+    global_obs_mean = train_feature_df.mean().values.astype(np.float32)
+    global_obs_std = train_feature_df.std().values.astype(np.float32)
+    global_obs_std[global_obs_std == 0] = 1e-8
+
+    num_cpu = 8 
+    vec_env = SubprocVecEnv([make_env(train_df, i, global_obs_mean, global_obs_std) for i in range(num_cpu)])
+    # norm_obs only used to normalize rewards and prevent gradient explosion
+    env = VecNormalize(vec_env, norm_obs=False, norm_reward=True, clip_reward=10.0)
+
+    model = SAC(
+        "MlpPolicy", 
+        env, 
+        learning_rate=3e-4,
+        batch_size=1024,
+        buffer_size=500000,
+        train_freq=(8, "step"),  # train after every 8 collected steps
+        gradient_steps=4,
+        device="cuda",  # GPU
+        verbose=1, 
+        tensorboard_log="./sac_goal_crypto_tensorboard/"
+    )
+    
+    print("training...")
+    model.learn(
+        total_timesteps=len(train_df) * 3, 
+        log_interval=4
+    )
+
+    # save
+    print("training finished, saving...")
+    model.save("./model/goal_sac")
+    env.save("./model/vec_normalize_sac_goal.pkl")
+    np.save("obs_mean.npy", global_obs_mean)
+    np.save("obs_std.npy", global_obs_std)
