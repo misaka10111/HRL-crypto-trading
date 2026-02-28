@@ -5,6 +5,8 @@ import pandas as pd
 import os
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+from stable_baselines3.common.monitor import Monitor
+
 
 
 class GoalConditionedCryptoEnv(gym.Env):
@@ -208,7 +210,6 @@ class GoalConditionedCryptoEnv(gym.Env):
 def make_env(df, seed, custom_mean, custom_std):
     def _init():
         env = GoalConditionedCryptoEnv(df, initial_balance=10000.0, custom_mean=custom_mean, custom_std=custom_std)
-        from stable_baselines3.common.monitor import Monitor
         env = Monitor(env)
         env.action_space.seed(seed)
         return env
