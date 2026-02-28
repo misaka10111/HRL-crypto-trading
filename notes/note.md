@@ -41,6 +41,10 @@
    - when an environment is fundamentally unprofitable (high fees + noisy data), an aggressively penalized agent becomes terrified. Instead of learning a smart strategy, it realizes that any action leads to drawdown penalties.
    - risk management is just there to smooth the curve of an already profitable strategy
    - next step: use featured data to train the model
+10. Goal-Conditioned SAC:
+    - The environment simulates high-level instructions (target weights) via _sample_random_goal, while the SAC agent outputs actual execution weights.
+    - Tracking error penalty: The absolute difference between actual and goal weights is penalized, with a tolerance threshold of 0.01.
+    - Transaction friction: Trading fees relative to portfolio value are used as a penalty (scaled by 100) to discourage excessive rebalancing.
 
 ## Tensorboard Figures
 
