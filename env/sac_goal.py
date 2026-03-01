@@ -263,5 +263,5 @@ if __name__ == "__main__":
     print("training finished, saving...")
     model.save("./model/goal_sac")
     env.save("./model/vec_normalize_sac_goal.pkl")
-    np.save("obs_mean.npy", global_obs_mean)
-    np.save("obs_std.npy", global_obs_std)
+    np.save("obs_mean.npy", np.array(global_obs_mean))
+    np.save("obs_std.npy", np.array(global_obs_std))
