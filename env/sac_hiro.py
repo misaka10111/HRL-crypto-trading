@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import pandas as pd
+import math
 from stable_baselines3 import SAC
 from sac_goal import GoalConditionedCryptoEnv
 
@@ -72,3 +73,71 @@ class HighLevelCryptoEnv(gym.Env):
         actual_weights = self.current_low_obs[self.num_market_features : self.num_market_features + self.total_assets]
         
         return np.concatenate([features, actual_weights])
+
+    def step(self, macro_action: np.ndarray):
+        """
+        High-level agent sets Goal, low-level agent executes for macro_step_freq steps
+        """
+        # normalize high-level action to use as low-level Goal
+        goal_weights = np.clip(macro_action, 0.0, 1.0)
+        weight_sum = np.sum(goal_weights)
+        if weight_sum > 0:
+            goal_weights = goal_weights / weight_sum
+        else:
+            goal_weights = np.zeros(self.total_assets)
+            goal_weights[0] = 1.0
+            
+        # force inject Goal into low-level environment
+        self.low_level_env.current_goal_weights = goal_weights
+        
+        # record starting portfolio value for macro return calculation
+        portfolio_value_start = self.low_level_env.portfolio_value
+        
+        terminated = False
+        truncated = False
+        macro_steps_taken = 0
+        
+        # Low-level Worker execution loop
+        for _ in range(self.macro_step_freq):
+            # update Goal in low-level observation
+            self.current_low_obs[-self.total_assets:] = goal_weights # type: ignore
+            
+            # query frozen low-level SAC model for execution action
+            # deterministic=True ensures pure execution without random exploration
+            low_level_action, _ = self.low_level_model.predict(self.current_low_obs, deterministic=True) # type: ignore
+            
+            # execute in low-level physical environment
+            self.current_low_obs, low_reward, terminated, truncated, info = self.low_level_env.step(low_level_action)
+            
+            macro_steps_taken += 1
+            if terminated or truncated:
+                break
+                
+        # high-level manager reward
+        portfolio_value_end = self.low_level_env.portfolio_value
+        
+        if portfolio_value_start > 0:
+            # Macro base reward (total log return over c steps)
+            macro_log_return = math.log(portfolio_value_end / portfolio_value_start)
+            macro_base_reward = macro_log_return * 100.0
+            
+            # Macro risk penalty (incremental drawdown penalty)
+            if portfolio_value_end > self.peak_portfolio_value:
+                self.peak_portfolio_value = portfolio_value_end
+                
+            current_drawdown = (self.peak_portfolio_value - portfolio_value_end) / self.peak_portfolio_value
+            drawdown_delta = current_drawdown - self.previous_drawdown
+            
+            if drawdown_delta > 0:
+                macro_drawdown_penalty = self.risk_penalty_weight * drawdown_delta * 100.0
+            else:
+                macro_drawdown_penalty = 0.0
+                
+            self.previous_drawdown = current_drawdown
+            
+            # Final high-level reward: profitability and risk management over the macro step
+            macro_reward = macro_base_reward - macro_drawdown_penalty
+        else:
+            macro_reward = -1.0
+            
+        return self._get_high_level_obs(), macro_reward, terminated, truncated, info
