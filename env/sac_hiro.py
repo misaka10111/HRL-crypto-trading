@@ -141,3 +141,61 @@ class HighLevelCryptoEnv(gym.Env):
             macro_reward = -1.0
             
         return self._get_high_level_obs(), macro_reward, terminated, truncated, info
+
+
+if __name__ == "__main__":
+    from stable_baselines3.common.monitor import Monitor
+    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+    from stable_baselines3.common.callbacks import BaseCallback
+    import os
+
+    print("loading data...")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(BASE_DIR, 'btcusd_5-min_data.csv')
+    df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True).sort_index()
+
+    split_idx = int(len(df) * 0.8)
+    train_df = df.iloc[:split_idx].reset_index(drop=True)
+
+    # specify low-level model path
+    # assumes the saved low-level model is named sac_low_level_executioner.zip
+    LOW_LEVEL_MODEL_PATH = os.path.join(BASE_DIR, "sac_low_level_executioner.zip")
+    
+    if not os.path.exists(LOW_LEVEL_MODEL_PATH):
+        raise FileNotFoundError(f"cannot find {LOW_LEVEL_MODEL_PATH}")
+
+    # instantiate high-level environment
+    base_env = HighLevelCryptoEnv(
+        df=train_df, 
+        low_level_model_path=LOW_LEVEL_MODEL_PATH, 
+        macro_step_freq=48,  # makes a decision every 48 low-level steps
+        initial_balance=10000.0
+    )
+    
+    # wrap environment for monitoring and vectorization
+    base_env = Monitor(base_env)
+    vec_env = DummyVecEnv([lambda: base_env])
+    env = VecNormalize(vec_env, norm_obs=False, norm_reward=True, clip_reward=10.0)
+
+    # initialize high-level SAC Agent
+    model = SAC(
+        "MlpPolicy", 
+        env, 
+        learning_rate=1e-4, 
+        batch_size=256,
+        verbose=1, 
+        tensorboard_log="./sac_hiro_manager_tensorboard/"
+    )
+    
+    # train
+    print("Training High-level Manager...")
+    high_level_steps_per_epoch = len(train_df) // 48
+    model.learn(
+        total_timesteps=high_level_steps_per_epoch * 5,
+        log_interval=1
+    )
+    
+    # save
+    print("training finished, saving...")
+    model.save("sac_high_level_manager")
+    env.save("vec_normalize_hiro.pkl")
