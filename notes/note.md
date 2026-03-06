@@ -45,6 +45,10 @@
     - The environment simulates high-level instructions (target weights) via _sample_random_goal, while the SAC agent outputs actual execution weights.
     - Tracking error penalty: The absolute difference between actual and goal weights is penalized, with a tolerance threshold of 0.01.
     - Transaction friction: Trading fees relative to portfolio value are used as a penalty (scaled by 100) to discourage excessive rebalancing.
+11. HIRO:
+    - Frozen Sub-policies: The Low-Level Worker MUST be frozen (deterministic=True and no model.learn) while training the High-Level Manager. Training both simultaneously without complex off-policy corrections creates a non-stationary environment where neither agent converges; the Manager must learn to treat the Worker as a stable, reliable tool.
+    - State Filtering: The Manager's observation space should typically be a subset of the Worker's. Using _get_high_level_obs to filter out low-level noise (like short-term tracking errors) prevents the Manager from being distracted by the Worker's internal state, allowing it to focus exclusively on market trend features.
+    - Timestep calculation: High-level steps are physically longer than low-level steps. If a dataset has N rows and the macro frequency is c, the Manager only takes N//c steps per epoch. Passing the raw dataset size to the Manager's model.learn() will trigger an IndexError (EOF) because the model attempts to run for c times the available data.
 
 ## Tensorboard Figures
 
