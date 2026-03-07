@@ -3,9 +3,12 @@ from gymnasium import spaces
 import numpy as np
 import pandas as pd
 import math
+import os
 from stable_baselines3 import SAC
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+from stable_baselines3.common.callbacks import BaseCallback
 from sac_goal import GoalConditionedCryptoEnv
-
 
 class HighLevelCryptoEnv(gym.Env):
     """
@@ -23,14 +26,15 @@ class HighLevelCryptoEnv(gym.Env):
         self.num_crypto_assets = 1
         self.total_assets = self.num_crypto_assets + 1 
         
+        # Instantiate the low-level worker environment
         self.low_level_env = GoalConditionedCryptoEnv(
             df=self.df, 
             initial_balance=self.initial_balance, 
             goal_change_freq=self.macro_step_freq
         )
         
-        print(f"Loading pre-trained low-level worker from {low_level_model_path}...")
-        self.low_level_model = SAC.load(low_level_model_path)
+        # Load the pre-trained low-level executioner
+        self.low_level_model = SAC.load(low_level_model_path, device="cpu")
         
         # Action Space: outputs Goal (target position weights) to the low-level agent
         self.action_space = spaces.Box(
@@ -39,8 +43,11 @@ class HighLevelCryptoEnv(gym.Env):
             dtype=np.float32
         )
         
-        # Observation Space (current market features and actual positions)
-        self.num_market_features = len(self.df.columns)
+        if 'Close' in self.df.columns:
+            self.feature_data = self.df.drop(columns=['Close']).values
+        else:
+            self.feature_data = self.df.values       
+        self.num_market_features = self.feature_data.shape[1]
         total_obs_dim = self.num_market_features + self.total_assets
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, 
@@ -54,24 +61,26 @@ class HighLevelCryptoEnv(gym.Env):
         self.risk_penalty_weight = 0.5
         
         self.current_low_obs = None
+        self.current_step = 0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
-        # reset low-level environment and get initial observation
+        # Reset low-level environment and get initial observation
         self.current_low_obs, info = self.low_level_env.reset(seed=seed)
         
-        # reset high-level risk state
+        self.current_step = info.get("step", getattr(self.low_level_env, "current_step", 0))
+        
+        # Reset high-level risk state
         self.peak_portfolio_value = self.initial_balance
         self.previous_drawdown = 0.0
         
         return self._get_high_level_obs(), info
     
     def _get_high_level_obs(self):
-        # extract features and actual positions from low-level env for next high-level decision
-        features = self.current_low_obs[:self.num_market_features]
-        actual_weights = self.current_low_obs[self.num_market_features : self.num_market_features + self.total_assets]
-        
+        features = self.feature_data[self.current_step].flatten().astype(np.float32)
+        original_num_features = len(self.df.columns)
+        actual_weights = self.current_low_obs[original_num_features : original_num_features + self.total_assets]
         return np.concatenate([features, actual_weights])
 
     def step(self, macro_action: np.ndarray):
@@ -95,7 +104,6 @@ class HighLevelCryptoEnv(gym.Env):
         
         terminated = False
         truncated = False
-        macro_steps_taken = 0
         
         # Low-level Worker execution loop
         for _ in range(self.macro_step_freq):
@@ -109,7 +117,9 @@ class HighLevelCryptoEnv(gym.Env):
             # execute in low-level physical environment
             self.current_low_obs, low_reward, terminated, truncated, info = self.low_level_env.step(low_level_action)
             
-            macro_steps_taken += 1
+            # Keep track of the actual step sequence for accurate stationary feature fetching
+            self.current_step = info.get("step", getattr(self.low_level_env, "current_step", self.current_step + 1))
+            
             if terminated or truncated:
                 break
                 
@@ -128,14 +138,10 @@ class HighLevelCryptoEnv(gym.Env):
             current_drawdown = (self.peak_portfolio_value - portfolio_value_end) / self.peak_portfolio_value
             drawdown_delta = current_drawdown - self.previous_drawdown
             
-            if drawdown_delta > 0:
-                macro_drawdown_penalty = self.risk_penalty_weight * drawdown_delta * 100.0
-            else:
-                macro_drawdown_penalty = 0.0
-                
+            macro_drawdown_penalty = self.risk_penalty_weight * drawdown_delta * 100.0 if drawdown_delta > 0 else 0.0
             self.previous_drawdown = current_drawdown
             
-            # Final high-level reward: profitability and risk management over the macro step
+            # Final high-level reward: profitability minus risk penalty
             macro_reward = macro_base_reward - macro_drawdown_penalty
         else:
             macro_reward = -1.0
@@ -143,48 +149,98 @@ class HighLevelCryptoEnv(gym.Env):
         return self._get_high_level_obs(), macro_reward, terminated, truncated, info
 
 
-if __name__ == "__main__":
-    from stable_baselines3.common.monitor import Monitor
-    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-    from stable_baselines3.common.callbacks import BaseCallback
-    import os
+class TradingMetricsCallback(BaseCallback):
+    """
+    Custom callback for logging Trading Metrics to TensorBoard.
+    """
+    def __init__(self, steps_per_year=2190, verbose=0): # 105120 / 48 macro steps = 2190
+        super(TradingMetricsCallback, self).__init__(verbose)
+        self.steps_per_year = steps_per_year
+        self.episode_returns = []
+        self.last_portfolio_value = 10000.0
 
+    def _on_step(self) -> bool:
+        step_reward = self.locals.get("rewards", [0.0])[0]
+        done = self.locals.get("dones", [False])[0]
+        infos = self.locals.get("infos", [{}])[0]
+
+        self.episode_returns.append(step_reward)
+
+        if "terminal_info" in infos:
+            self.last_portfolio_value = infos["terminal_info"].get("portfolio_value", self.last_portfolio_value)
+        elif "portfolio_value" in infos:
+            self.last_portfolio_value = infos["portfolio_value"]
+
+        if done:
+            final_portfolio_value = self.last_portfolio_value
+            returns_array = np.array(self.episode_returns)
+            
+            if len(returns_array) > 1 and np.std(returns_array) > 0:
+                mean_return = np.mean(returns_array)
+                std_return = np.std(returns_array)
+                annualized_sharpe = (mean_return / std_return) * np.sqrt(self.steps_per_year)
+            else:
+                annualized_sharpe = 0.0
+
+            self.logger.record("trading/final_portfolio_value", final_portfolio_value)
+            self.logger.record("trading/annualized_sharpe_ratio", annualized_sharpe)
+
+            self.episode_returns = []
+
+        return True
+
+
+def make_env(df, low_level_model_path, seed):
+    """
+    Utility function for multiprocess environment creation.
+    """
+    def _init():
+        env = HighLevelCryptoEnv(
+            df=df, 
+            low_level_model_path=low_level_model_path, 
+            macro_step_freq=48,
+            initial_balance=10000.0
+        )
+        env = Monitor(env)
+        env.action_space.seed(seed)
+        return env
+    return _init
+
+
+if __name__ == "__main__":
     print("loading data...")
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    data_path = os.path.join(BASE_DIR, 'btcusd_5-min_data.csv')
+    data_path = os.path.join(BASE_DIR, 'btcusd_5-min_features.csv')
     df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True).sort_index()
 
     split_idx = int(len(df) * 0.8)
     train_df = df.iloc[:split_idx].reset_index(drop=True)
 
-    # specify low-level model path
-    # assumes the saved low-level model is named sac_low_level_executioner.zip
-    LOW_LEVEL_MODEL_PATH = os.path.join(BASE_DIR, "sac_low_level_executioner.zip")
-    
+    LOW_LEVEL_MODEL_PATH = "./model/sac_goal.zip"
     if not os.path.exists(LOW_LEVEL_MODEL_PATH):
-        raise FileNotFoundError(f"cannot find {LOW_LEVEL_MODEL_PATH}")
+        raise FileNotFoundError(f"Cannot find {LOW_LEVEL_MODEL_PATH}")
 
-    # instantiate high-level environment
-    base_env = HighLevelCryptoEnv(
-        df=train_df, 
-        low_level_model_path=LOW_LEVEL_MODEL_PATH, 
-        macro_step_freq=48,  # makes a decision every 48 low-level steps
-        initial_balance=10000.0
-    )
-    
-    # wrap environment for monitoring and vectorization
-    base_env = Monitor(base_env)
-    vec_env = DummyVecEnv([lambda: base_env])
-    env = VecNormalize(vec_env, norm_obs=False, norm_reward=True, clip_reward=10.0)
+    print(f"Data volume: {len(df)} steps")
+    print(f"Training set volume: {len(train_df)} steps")
 
-    # initialize high-level SAC Agent
+    num_cpu = 8 
+    vec_env = SubprocVecEnv([make_env(train_df, LOW_LEVEL_MODEL_PATH, i) for i in range(num_cpu)])
+    env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
+
+    # 5-min intervals: 105120 / 48 = 2190
+    trading_callback = TradingMetricsCallback(steps_per_year=2190)
+
     model = SAC(
         "MlpPolicy", 
         env, 
-        learning_rate=1e-4, 
-        batch_size=256,
+        learning_rate=3e-4, 
+        batch_size=1024,
+        buffer_size=500000,
+        train_freq=(8, "step"),  # Train after every 8 collected macro steps
+        gradient_steps=4,
+        device="cuda",  # GPU
         verbose=1, 
-        tensorboard_log="./sac_hiro_manager_tensorboard/"
+        tensorboard_log="./tensorboard/sac_hiro/"
     )
     
     # train
@@ -192,10 +248,10 @@ if __name__ == "__main__":
     high_level_steps_per_epoch = len(train_df) // 48
     model.learn(
         total_timesteps=high_level_steps_per_epoch * 5,
-        log_interval=1
+        callback=trading_callback,
+        log_interval=4
     )
     
-    # save
-    print("training finished, saving...")
-    model.save("sac_high_level_manager")
-    env.save("vec_normalize_hiro.pkl")
+    print("Training finished, saving models...")
+    model.save("./model/sac_high_level_manager")
+    env.save("./model/vec_normalize_hiro.pkl")

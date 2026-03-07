@@ -250,7 +250,7 @@ if __name__ == "__main__":
         gradient_steps=4,
         device="cuda",  # GPU
         verbose=1, 
-        tensorboard_log="./sac_goal_crypto_tensorboard/"
+        tensorboard_log="./tensorboard/sac_goal/"
     )
     
     print("training...")
@@ -261,7 +261,7 @@ if __name__ == "__main__":
 
     # save
     print("training finished, saving...")
-    model.save("./model/goal_sac")
+    model.save("./model/sac_goal")
     env.save("./model/vec_normalize_sac_goal.pkl")
     np.save("obs_mean.npy", np.array(global_obs_mean))
     np.save("obs_std.npy", np.array(global_obs_std))
