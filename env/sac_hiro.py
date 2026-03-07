@@ -26,7 +26,6 @@ class HighLevelCryptoEnv(gym.Env):
         self.num_crypto_assets = 1
         self.total_assets = self.num_crypto_assets + 1 
         
-        # 修复点 1: 将归一化参数传递给底层执行环境，防止分布偏移
         self.low_level_env = GoalConditionedCryptoEnv(
             df=self.df, 
             initial_balance=self.initial_balance, 
@@ -86,6 +85,7 @@ class HighLevelCryptoEnv(gym.Env):
         features = self.feature_data[safe_step].flatten().astype(np.float32)
         
         # actual dimension = num_market_features
+        assert self.current_low_obs is not None
         actual_weights = self.current_low_obs[self.num_market_features : self.num_market_features + self.total_assets]
         
         return np.concatenate([features, actual_weights])
@@ -114,6 +114,7 @@ class HighLevelCryptoEnv(gym.Env):
         
         # Low-level Worker execution loop
         for _ in range(self.macro_step_freq):
+            assert self.current_low_obs is not None
             # update Goal in low-level observation
             self.current_low_obs[-self.total_assets:] = goal_weights 
             
