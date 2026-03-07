@@ -17,7 +17,7 @@ class HighLevelCryptoEnv(gym.Env):
     """
     metadata = {'render_modes': ['human', 'console']}
 
-    def __init__(self, df: pd.DataFrame, low_level_model_path: str, macro_step_freq=48, initial_balance=10000.0):
+    def __init__(self, df: pd.DataFrame, low_level_model_path: str, macro_step_freq=48, initial_balance=10000.0, custom_mean=None, custom_std=None):
         super(HighLevelCryptoEnv, self).__init__()
         
         self.df = df
@@ -26,11 +26,13 @@ class HighLevelCryptoEnv(gym.Env):
         self.num_crypto_assets = 1
         self.total_assets = self.num_crypto_assets + 1 
         
-        # Instantiate the low-level worker environment
+        # 修复点 1: 将归一化参数传递给底层执行环境，防止分布偏移
         self.low_level_env = GoalConditionedCryptoEnv(
             df=self.df, 
             initial_balance=self.initial_balance, 
-            goal_change_freq=self.macro_step_freq
+            goal_change_freq=self.macro_step_freq,
+            custom_mean=custom_mean,
+            custom_std=custom_std
         )
         
         # Load the pre-trained low-level executioner
@@ -47,6 +49,7 @@ class HighLevelCryptoEnv(gym.Env):
             self.feature_data = self.df.drop(columns=['Close']).values
         else:
             self.feature_data = self.df.values       
+            
         self.num_market_features = self.feature_data.shape[1]
         total_obs_dim = self.num_market_features + self.total_assets
         self.observation_space = spaces.Box(
@@ -78,9 +81,13 @@ class HighLevelCryptoEnv(gym.Env):
         return self._get_high_level_obs(), info
     
     def _get_high_level_obs(self):
-        features = self.feature_data[self.current_step].flatten().astype(np.float32)
-        original_num_features = len(self.df.columns)
-        actual_weights = self.current_low_obs[original_num_features : original_num_features + self.total_assets]
+        # Boundary protection to prevent IndexError caused by current_step overflow at the end of an episode
+        safe_step = min(self.current_step, len(self.feature_data) - 1)
+        features = self.feature_data[safe_step].flatten().astype(np.float32)
+        
+        # actual dimension = num_market_features
+        actual_weights = self.current_low_obs[self.num_market_features : self.num_market_features + self.total_assets]
+        
         return np.concatenate([features, actual_weights])
 
     def step(self, macro_action: np.ndarray):
@@ -108,11 +115,11 @@ class HighLevelCryptoEnv(gym.Env):
         # Low-level Worker execution loop
         for _ in range(self.macro_step_freq):
             # update Goal in low-level observation
-            self.current_low_obs[-self.total_assets:] = goal_weights # type: ignore
+            self.current_low_obs[-self.total_assets:] = goal_weights 
             
             # query frozen low-level SAC model for execution action
             # deterministic=True ensures pure execution without random exploration
-            low_level_action, _ = self.low_level_model.predict(self.current_low_obs, deterministic=True) # type: ignore
+            low_level_action, _ = self.low_level_model.predict(self.current_low_obs, deterministic=True) 
             
             # execute in low-level physical environment
             self.current_low_obs, low_reward, terminated, truncated, info = self.low_level_env.step(low_level_action)
@@ -190,7 +197,7 @@ class TradingMetricsCallback(BaseCallback):
         return True
 
 
-def make_env(df, low_level_model_path, seed):
+def make_env(df, low_level_model_path, seed, custom_mean, custom_std):
     """
     Utility function for multiprocess environment creation.
     """
@@ -199,7 +206,9 @@ def make_env(df, low_level_model_path, seed):
             df=df, 
             low_level_model_path=low_level_model_path, 
             macro_step_freq=48,
-            initial_balance=10000.0
+            initial_balance=10000.0,
+            custom_mean=custom_mean,
+            custom_std=custom_std
         )
         env = Monitor(env)
         env.action_space.seed(seed)
@@ -219,12 +228,20 @@ if __name__ == "__main__":
     LOW_LEVEL_MODEL_PATH = "./model/sac_goal.zip"
     if not os.path.exists(LOW_LEVEL_MODEL_PATH):
         raise FileNotFoundError(f"Cannot find {LOW_LEVEL_MODEL_PATH}")
+        
+    OBS_MEAN_PATH = "./model/obs_mean.npy"
+    OBS_STD_PATH = "./model/obs_std.npy"
+    if not os.path.exists(OBS_MEAN_PATH) or not os.path.exists(OBS_STD_PATH):
+        raise FileNotFoundError("cannot find obs_mean or obs_std")
+        
+    global_obs_mean = np.load(OBS_MEAN_PATH)
+    global_obs_std = np.load(OBS_STD_PATH)
 
     print(f"Data volume: {len(df)} steps")
     print(f"Training set volume: {len(train_df)} steps")
 
     num_cpu = 8 
-    vec_env = SubprocVecEnv([make_env(train_df, LOW_LEVEL_MODEL_PATH, i) for i in range(num_cpu)])
+    vec_env = SubprocVecEnv([make_env(train_df, LOW_LEVEL_MODEL_PATH, i, global_obs_mean, global_obs_std) for i in range(num_cpu)])
     env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0)
 
     # 5-min intervals: 105120 / 48 = 2190
@@ -253,5 +270,5 @@ if __name__ == "__main__":
     )
     
     print("Training finished, saving models...")
-    model.save("./model/sac_high_level_manager")
-    env.save("./model/vec_normalize_hiro.pkl")
+    model.save("./model/sac_hiro")
+    env.save("./model/vec_normalize_sac_hiro.pkl")
