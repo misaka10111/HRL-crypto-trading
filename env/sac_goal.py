@@ -8,7 +8,6 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
 
 
-
 class GoalConditionedCryptoEnv(gym.Env):
     """
     Goal-Conditioned low-level trading environment
@@ -16,7 +15,7 @@ class GoalConditionedCryptoEnv(gym.Env):
     """
     metadata = {'render_modes': ['human', 'console']}
 
-    def __init__(self, df: pd.DataFrame, initial_balance=10000.0, goal_change_freq=48, custom_mean=None, custom_std=None):
+    def __init__(self, df: pd.DataFrame, initial_balance=10000.0, goal_change_freq=48, custom_mean=None, custom_std=None, max_steps=8640):
         super(GoalConditionedCryptoEnv, self).__init__()
         
         self.df = df
@@ -25,6 +24,9 @@ class GoalConditionedCryptoEnv(gym.Env):
         self.total_assets = self.num_crypto_assets + 1 
         self.commission_fee_percent = 0.001
         self.goal_change_freq = goal_change_freq
+        
+        self.max_steps = max_steps  # =8640, 30days
+        self.start_step = 0
 
         self.price_data = self.df['Close'].values
         self.feature_df = self.df.drop(columns=['Close'])
@@ -37,7 +39,7 @@ class GoalConditionedCryptoEnv(gym.Env):
         else:
             self.obs_mean = self.feature_df.mean().values.astype(np.float32)
             self.obs_std = self.feature_df.std().values.astype(np.float32)
-            self.obs_std[self.obs_std == 0] = 1e-8  # prevent division by zero
+            self.obs_std[self.obs_std == 0] = 1e-8  
 
         # expanded observation space (flattened)
         self.num_market_features = self.feature_df.shape[1]
@@ -65,7 +67,6 @@ class GoalConditionedCryptoEnv(gym.Env):
     def _get_observation(self):
         raw_features = self.feature_data[self.current_step].astype(np.float32)
         norm_features = (raw_features - self.obs_mean) / self.obs_std
-        
         current_prices = self._get_current_prices()
         actual_weights = self._get_actual_weights(current_prices)
         
@@ -113,7 +114,15 @@ class GoalConditionedCryptoEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.current_step = 0
+        
+        # randomly select start point
+        if self.max_steps is not None and len(self.df) > self.max_steps:
+            max_start_idx = len(self.df) - self.max_steps - 1
+            self.start_step = np.random.randint(0, max_start_idx)
+        else:
+            self.start_step = 0
+            
+        self.current_step = self.start_step
         self.cash_balance = self.initial_balance
         self.crypto_holdings = np.zeros(self.num_crypto_assets)
         self.portfolio_value = self.initial_balance
@@ -123,8 +132,7 @@ class GoalConditionedCryptoEnv(gym.Env):
         return self._get_observation(), self._get_info()
     
     def step(self, action: np.ndarray):
-        # Simulate high-level intervention
-        if self.current_step > 0 and self.current_step % self.goal_change_freq == 0:
+        if self.current_step > self.start_step and (self.current_step - self.start_step) % self.goal_change_freq == 0:
             self.current_goal_weights = self._sample_random_goal()
 
         # Parse the low-level Agent's execution action
@@ -143,8 +151,7 @@ class GoalConditionedCryptoEnv(gym.Env):
         target_values = execution_weights * self.portfolio_value
         target_crypto_values = target_values[1:] 
         crypto_value_diffs = target_crypto_values - current_crypto_values
-
-        trade_cost_fiat = 0.0 # absolute friction cost
+        trade_cost_fiat = 0.0 
 
         # Sell
         for i in range(self.num_crypto_assets):
@@ -197,10 +204,15 @@ class GoalConditionedCryptoEnv(gym.Env):
         step_reward = - (tracking_error * 2.0) - (cost_penalty * 100.0)
 
         # Termination 
-        terminated = self.current_step >= len(self.df) - 1
+        terminated = False
         truncated = False
+        
         if self.portfolio_value < self.initial_balance * 0.1:
             terminated = True
+        elif self.max_steps is not None and (self.current_step - self.start_step) >= self.max_steps:
+            truncated = True
+        elif self.current_step >= len(self.df) - 1:
+            truncated = True
 
         info = self._get_info()
         info["tracking_error"] = tracking_error
@@ -220,8 +232,7 @@ if __name__ == "__main__":
     print("loading data...")
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(BASE_DIR, 'btcusd_5-min_features.csv')
-    df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True)
-    df = df.sort_index()
+    df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True).sort_index()
 
     split_idx = int(len(df) * 0.8)
     train_df = df.iloc[:split_idx].reset_index(drop=True)
@@ -255,7 +266,7 @@ if __name__ == "__main__":
     
     print("training...")
     model.learn(
-        total_timesteps=len(train_df) * 3, 
+        total_timesteps=1_000_000,
         log_interval=4
     )
 

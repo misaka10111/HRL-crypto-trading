@@ -31,7 +31,8 @@ class HighLevelCryptoEnv(gym.Env):
             initial_balance=self.initial_balance, 
             goal_change_freq=self.macro_step_freq,
             custom_mean=custom_mean,
-            custom_std=custom_std
+            custom_std=custom_std,
+            max_steps=8640  
         )
         
         # Load the pre-trained low-level executioner
@@ -70,10 +71,7 @@ class HighLevelCryptoEnv(gym.Env):
         
         # Reset low-level environment and get initial observation
         self.current_low_obs, info = self.low_level_env.reset(seed=seed)
-        
         self.current_step = info.get("step", getattr(self.low_level_env, "current_step", 0))
-        
-        # Reset high-level risk state
         self.peak_portfolio_value = self.initial_balance
         self.previous_drawdown = 0.0
         
@@ -91,9 +89,7 @@ class HighLevelCryptoEnv(gym.Env):
         return np.concatenate([features, actual_weights])
 
     def step(self, macro_action: np.ndarray):
-        """
-        High-level agent sets Goal, low-level agent executes for macro_step_freq steps
-        """
+        # High-level agent sets Goal, low-level agent executes for macro_step_freq steps
         # normalize high-level action to use as low-level Goal
         goal_weights = np.clip(macro_action, 0.0, 1.0)
         weight_sum = np.sum(goal_weights)
@@ -145,7 +141,6 @@ class HighLevelCryptoEnv(gym.Env):
                 
             current_drawdown = (self.peak_portfolio_value - portfolio_value_end) / self.peak_portfolio_value
             drawdown_delta = current_drawdown - self.previous_drawdown
-            
             macro_drawdown_penalty = self.risk_penalty_weight * drawdown_delta * 100.0 if drawdown_delta > 0 else 0.0
             self.previous_drawdown = current_drawdown
             
@@ -192,16 +187,11 @@ class TradingMetricsCallback(BaseCallback):
 
             self.logger.record("trading/final_portfolio_value", final_portfolio_value)
             self.logger.record("trading/annualized_sharpe_ratio", annualized_sharpe)
-
             self.episode_returns = []
 
         return True
 
-
 def make_env(df, low_level_model_path, seed, custom_mean, custom_std):
-    """
-    Utility function for multiprocess environment creation.
-    """
     def _init():
         env = HighLevelCryptoEnv(
             df=df, 
@@ -261,13 +251,13 @@ if __name__ == "__main__":
         tensorboard_log="./tensorboard/sac_hiro/"
     )
     
-    # train
-    print("Training High-level Manager...")
-    high_level_steps_per_epoch = len(train_df) // 48
+    # 500,000 to 8 env，each 62.5k macro steps
+    total_timesteps = 500_000 
+    print(f"Training High-level Manager for {total_timesteps} steps...")
     model.learn(
-        total_timesteps=high_level_steps_per_epoch * 5,
+        total_timesteps=total_timesteps,
         callback=trading_callback,
-        log_interval=4
+        log_interval=1
     )
     
     print("Training finished, saving models...")
