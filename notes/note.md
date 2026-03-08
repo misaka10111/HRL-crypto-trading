@@ -49,6 +49,15 @@
     - Frozen Sub-policies: The Low-Level Worker MUST be frozen (deterministic=True and no model.learn) while training the High-Level Manager. Training both simultaneously without complex off-policy corrections creates a non-stationary environment where neither agent converges; the Manager must learn to treat the Worker as a stable, reliable tool.
     - State Filtering: The Manager's observation space should typically be a subset of the Worker's. Using _get_high_level_obs to filter out low-level noise (like short-term tracking errors) prevents the Manager from being distracted by the Worker's internal state, allowing it to focus exclusively on market trend features.
     - Timestep calculation: High-level steps are physically longer than low-level steps. If a dataset has N rows and the macro frequency is c, the Manager only takes N//c steps per epoch. Passing the raw dataset size to the Manager's model.learn() will trigger an IndexError (EOF) because the model attempts to run for c times the available data.
+    - The high-level manager must pass pre-computed custom_mean and custom_std (e.g., loaded from npy files) to the low-level environment. Otherwise, the low-level recalculates parameters based on the current data snippet, causing a massive domain shift during execution.
+    - Logging: total_timesteps must account for multiple parallel environments and be large enough to complete full epochs. TensorBoard only logs at the end of episodes, so setting timesteps too low on long episodes results in empty logs.
+    - [Random episode slicing](https://arxiv.org/abs/1804.00379): Introduce a max_steps limit (e.g., 8640 steps or 30 days) and a randomized start_step in reset(). This breaks reliance on a fixed starting point, prevents historical overfitting, and ensures the replay buffer contains diverse market conditions.
+    - [Reward density](https://www.geeksforgeeks.org/machine-learning/sparse-rewards-in-reinforcement-learning/): Condensing episodes from multi-year marathons to 30-day windows provides a much denser reward signal, accelerating agent convergence.
+    - Termination logic: Separate end-of-episode signals into terminated (actual portfolio ruin/bankruptcy) and truncated (reaching the max_steps time limit or EOF). This accurately reflects the MDP state and aligns with standard [Gymnasium API practices](https://farama.org/Gymnasium-Terminated-Truncated-Step-API).
+
+Reward density: Condensing episodes from multi-year marathons to 30-day windows provides a much denser reward signal, accelerating agent convergence.
+
+Termination logic: Separate end-of-episode signals into terminated (actual portfolio ruin/bankruptcy) and truncated (reaching the max_steps time limit or EOF). This accurately reflects the MDP state and aligns with standard Gymnasium API practices.
 
 ## Tensorboard Figures
 
