@@ -1,4 +1,7 @@
+import os
 import numpy as np
+from stable_baselines3 import SAC
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 def calculate_metrics(equity_curve, steps_per_year):
@@ -21,3 +24,48 @@ def calculate_metrics(equity_curve, steps_per_year):
     max_drawdown = np.max(drawdowns) * 100
     
     return total_return, sharpe, max_drawdown
+
+def run_backtest(env_class, model_path, vec_norm_path, df, env_kwargs, is_hrl=False):
+    """
+    General backtesting execution function
+    """
+    print(f"\nbacktesting model: {os.path.basename(model_path)} ...")
+    
+    # initialize environment
+    base_env = env_class(df=df, **env_kwargs)
+    vec_env = DummyVecEnv([lambda: base_env])
+
+    # load normalization wrapper and freeze parameters
+    env = VecNormalize.load(vec_norm_path, vec_env)
+    env.training = False
+    env.norm_reward = False
+
+    # load model
+    model = SAC.load(model_path)
+
+    # execute inference
+    obs = env.reset()
+    done = False
+    
+    dates = []
+    portfolio_values = []
+    
+    while not done:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, done, info_list = env.step(action)
+        
+        info = info_list[0]
+        step_idx = info.get('step', 0)
+        current_value = info.get('portfolio_value', base_env.initial_balance)
+        
+        # prevent step overflow of df index
+        safe_idx = min(step_idx, len(df) - 1)
+        dates.append(df.index[safe_idx])
+        portfolio_values.append(current_value)
+
+    # calculate metrics
+    # hrl is 4 hours per step, single layer is 5 mins per step
+    steps_per_yr = 2190 if is_hrl else 105120 
+    metrics = calculate_metrics(portfolio_values, steps_per_yr)
+    
+    return dates, portfolio_values, metrics
