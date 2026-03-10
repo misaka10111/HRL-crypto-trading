@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from sac_standard import SacStandard
@@ -137,3 +138,48 @@ if __name__ == "__main__":
         results['Step 4 (HRL)'] = {'dates': d4, 'values': v4, 'metrics': m4}
     except Exception as e:
         print(f"step 4 backtest failed: {e}")
+
+    # calculate another baseline (buy & hold)
+    print("\ncalculating buy & hold baseline...")
+    btc_prices = test_df['Close'].values
+    buy_amount = INITIAL_BALANCE / btc_prices[0]
+    bh_values = buy_amount * btc_prices
+    bh_metrics = calculate_metrics(bh_values, 105120)
+    results['Buy & Hold BTC'] = {'dates': test_df.index, 'values': bh_values, 'metrics': bh_metrics}
+
+    # print table
+    print("\n" + "="*65)
+    print(f"{'Strategy':<20} | {'Total Return':>12} | {'Sharpe Ratio':>12} | {'Max Drawdown':>12}")
+    print("-" * 65)
+    for name, data in results.items():
+        ret, sharpe, mdd = data['metrics']
+        print(f"{name:<20} | {ret:>11.2f}% | {sharpe:>12.2f} | {mdd:>11.2f}%")
+    print("="*65)
+
+    # plot equity curve comparison
+    plt.figure(figsize=(14, 7))
+    plt.title("Out-of-Sample Backtest Equity Curve Comparison", fontsize=16)
+    
+    colors = {
+        'Step 1 (Baseline)': 'red',
+        'Step 2 (Risk-Aware)': 'orange',
+        'Step 4 (HRL)': 'green',
+        'Buy & Hold BTC': 'blue'
+    }
+
+    for name, data in results.items():
+        plt.plot(data['dates'], data['values'], label=name, color=colors.get(name, 'black'), alpha=0.8, linewidth=1.5)
+
+    plt.axhline(y=INITIAL_BALANCE, color='gray', linestyle='--', alpha=0.5, label='Initial Balance')
+    
+    plt.xlabel("Date", fontsize=12)
+    plt.ylabel("Portfolio Value (USD)", fontsize=12)
+    plt.legend(fontsize=12, loc='upper left')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # save
+    save_path = os.path.join(ROOT_DIR, "backtest_comparison.png")  # Saving image to project root
+    plt.savefig(save_path, dpi=300)
+    print(f"\ncomparison chart saved to: {save_path}")
+    plt.show()
