@@ -1,7 +1,11 @@
 import os
+import pandas as pd
 import numpy as np
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from sac_standard import SacStandard
+from sac_risk import SacRiskAware
+from env.sac_hiro import HighLevelCryptoEnv
 
 
 def calculate_metrics(equity_curve, steps_per_year):
@@ -69,3 +73,67 @@ def run_backtest(env_class, model_path, vec_norm_path, df, env_kwargs, is_hrl=Fa
     metrics = calculate_metrics(portfolio_values, steps_per_yr)
     
     return dates, portfolio_values, metrics
+
+
+if __name__ == "__main__":
+    ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    BASE_DIR = os.path.join(ROOT_DIR, 'model')
+    
+    # 20% test set
+    print("loading test data...")
+    data_path = os.path.join(ROOT_DIR, 'btcusd_5-min_features.csv')
+    df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True).sort_index()
+
+    split_idx = int(len(df) * 0.8)
+    test_df = df.iloc[split_idx:].reset_index(drop=True)
+    
+    # restore timestamp index for plotting
+    test_df.index = df.index[split_idx:] 
+    print(f"test set volume: {len(test_df)} steps ; timespan: {test_df.index[0]} to {test_df.index[-1]}")
+
+    INITIAL_BALANCE = 10000.0
+    results = {}
+
+    # backtest 1: standard SAC
+    try:
+        d1, v1, m1 = run_backtest(
+            env_class=SacStandard,
+            model_path=os.path.join(BASE_DIR, "standard_sac_2.zip"),
+            vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_2.pkl"),
+            df=test_df,
+            env_kwargs={'initial_balance': INITIAL_BALANCE}
+        )
+        results['Step 1 (Baseline)'] = {'dates': d1, 'values': v1, 'metrics': m1}
+    except Exception as e:
+        print(f"step 1 backtest failed or skipped: {e}")
+
+    # backtest 2: risk-aware SAC
+    try:
+        d2, v2, m2 = run_backtest(
+            env_class=SacRiskAware, 
+            model_path=os.path.join(BASE_DIR, "sac_risk_2.zip"),
+            vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_risk_2.pkl"),
+            df=test_df,
+            env_kwargs={'initial_balance': INITIAL_BALANCE}
+        )
+        results['Step 2 (Risk-Aware)'] = {'dates': d2, 'values': v2, 'metrics': m2}
+    except Exception as e:
+        print(f"step 2 backtest failed or skipped: {e}")
+
+    # backtest 3: HRL
+    try:
+        d4, v4, m4 = run_backtest(
+            env_class=HighLevelCryptoEnv,
+            model_path=os.path.join(BASE_DIR, "./sac_hiro_2/sac_hiro.zip"),
+            vec_norm_path=os.path.join(BASE_DIR, "./sac_hiro_2/vec_normalize_sac_hiro.pkl"),
+            df=test_df,
+            env_kwargs={
+                'low_level_model_path': os.path.join(BASE_DIR, "sac_goal.zip"),
+                'macro_step_freq': 48,
+                'initial_balance': INITIAL_BALANCE
+            },
+            is_hrl=True
+        )
+        results['Step 4 (HRL)'] = {'dates': d4, 'values': v4, 'metrics': m4}
+    except Exception as e:
+        print(f"step 4 backtest failed: {e}")
