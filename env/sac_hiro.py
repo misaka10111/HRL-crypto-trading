@@ -10,6 +10,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import BaseCallback
 from sac_goal import GoalConditionedCryptoEnv
 
+
 class HighLevelCryptoEnv(gym.Env):
     """
     HIRO-like high-level manager environment.
@@ -31,8 +32,7 @@ class HighLevelCryptoEnv(gym.Env):
             initial_balance=self.initial_balance, 
             goal_change_freq=self.macro_step_freq,
             custom_mean=custom_mean,
-            custom_std=custom_std,
-            max_steps=8640  
+            custom_std=custom_std
         )
         
         # Load the pre-trained low-level executioner
@@ -61,7 +61,7 @@ class HighLevelCryptoEnv(gym.Env):
         # High-level risk management records
         self.peak_portfolio_value = self.initial_balance
         self.previous_drawdown = 0.0
-        self.risk_penalty_weight = 0.5
+        self.risk_penalty_weight = 0.2
         
         self.current_low_obs = None
         self.current_step = 0
@@ -241,8 +241,9 @@ if __name__ == "__main__":
     model = SAC(
         "MlpPolicy", 
         env, 
-        learning_rate=3e-4, 
-        batch_size=1024,
+        ent_coef="auto_0.1",
+        learning_rate=1e-4,
+        batch_size=4096,
         buffer_size=500000,
         train_freq=(8, "step"),  # Train after every 8 collected macro steps
         gradient_steps=4,
@@ -251,11 +252,11 @@ if __name__ == "__main__":
         tensorboard_log="./tensorboard/sac_hiro/"
     )
     
-    # 500,000 to 8 env，each 62.5k macro steps
-    total_timesteps = 500_000 
-    print(f"Training High-level Manager for {total_timesteps} steps...")
+    # train
+    print("Training High-level Manager...")
+    high_level_steps_per_epoch = len(train_df) // 48
     model.learn(
-        total_timesteps=total_timesteps,
+        total_timesteps=1_000_000,
         callback=trading_callback,
         log_interval=1
     )
