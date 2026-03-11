@@ -60,6 +60,11 @@
     - entropy coefficient collapse before 400k steps
     - ep_rew_mean not converged
 13. Inference: need to turn off exploration; freeze the normalizer; disable reward normalization
+14. HIRO 2 changes:
+    - Improved critic network convergence: Increasing the batch_size to 4096 significantly reduces the variance in gradient updates, allowing the value estimation network (Critic) to learn a much more accurate and stable representation of the noisy financial data environment.
+    - Prolonged exploration phase: By adjusting the hyperparameters, the entropy coefficient (ent_coef) decreases much more gradually, preventing the agent from prematurely collapsing into a deterministic, suboptimal policy and ensuring it thoroughly explores different portfolio weight allocations.
+    - While the absolute profit remains slightly negative, the overall trend in ep_rew_mean and the smoothed final_portfolio_value indicates a more robust and slightly better-performing strategy in the long run compared to previous iterations.
+    - Switching to a fixed learning rate of 1e-4 prevents the model from completely halting its learning process at the end of the specified timesteps, allowing for continuous fine-tuning of the policy network even in the later stages of training.
 
 Reward density: Condensing episodes from multi-year marathons to 30-day windows provides a much denser reward signal, accelerating agent convergence.
 
