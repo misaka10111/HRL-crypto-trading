@@ -1,5 +1,6 @@
 .env
 *.csv
 *.ign.*
-__pycache__/*
+*.pyc
+__pycache__/
 /tensorboard/
