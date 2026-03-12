@@ -18,7 +18,7 @@ class HighLevelCryptoEnv(gym.Env):
     """
     metadata = {'render_modes': ['human', 'console']}
 
-    def __init__(self, df: pd.DataFrame, low_level_model_path: str, macro_step_freq=48, initial_balance=10000.0, custom_mean=None, custom_std=None):
+    def __init__(self, df: pd.DataFrame, low_level_model_path: str, macro_step_freq=48, initial_balance=10000.0, custom_mean=None, custom_std=None, is_eval=False):
         super(HighLevelCryptoEnv, self).__init__()
         
         self.df = df
@@ -27,12 +27,15 @@ class HighLevelCryptoEnv(gym.Env):
         self.num_crypto_assets = 1
         self.total_assets = self.num_crypto_assets + 1 
         
+        self.is_eval = is_eval
+        
         self.low_level_env = GoalConditionedCryptoEnv(
             df=self.df, 
             initial_balance=self.initial_balance, 
             goal_change_freq=self.macro_step_freq,
             custom_mean=custom_mean,
-            custom_std=custom_std
+            custom_std=custom_std,
+            is_eval=self.is_eval
         )
         
         # Load the pre-trained low-level executioner

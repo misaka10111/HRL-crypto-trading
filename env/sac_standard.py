@@ -16,7 +16,7 @@ class SacStandard(gym.Env):
     """
     metadata = {'render_modes': ['human', 'console']}
 
-    def __init__(self, df: pd.DataFrame, initial_balance=10000.0, max_steps=2000):
+    def __init__(self, df: pd.DataFrame, initial_balance=10000.0, max_steps=2000, is_eval=False):
         super(SacStandard, self).__init__()
         
         self.df = df
@@ -25,6 +25,8 @@ class SacStandard(gym.Env):
         self.num_crypto_assets = 1
         self.total_assets = self.num_crypto_assets + 1  # BTC + USDT
         self.commission_fee_percent = 0.001  # 0.1%
+        # for backtest
+        self.is_eval = is_eval
         
         # Separate Close price from features
         self.price_data = self.df['Close'].values
@@ -55,10 +57,14 @@ class SacStandard(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+
+        if self.is_eval:
+            self.start_step = 0
+        else:
+            # random starting point ensures multi-threaded exploration
+            max_start_idx = len(self.df) - self.max_steps - 1
+            self.start_step = np.random.randint(0, max_start_idx) if max_start_idx > 0 else 0
         
-        # random starting point ensures multi-threaded exploration
-        max_start_idx = len(self.df) - self.max_steps - 1
-        self.start_step = np.random.randint(0, max_start_idx) if max_start_idx > 0 else 0
         self.current_step = self.start_step        
         self.cash_balance = self.initial_balance
         self.crypto_holdings = np.zeros(self.num_crypto_assets)
@@ -125,12 +131,17 @@ class SacStandard(gym.Env):
 
         # termination
         steps_taken = self.current_step - self.start_step
-        terminated = steps_taken >= self.max_steps or self.current_step >= len(self.df) - 1
         truncated = False
+        
+        if self.is_eval:
+            terminated = self.current_step >= len(self.df) - 1
+        else:
+            terminated = steps_taken >= self.max_steps or self.current_step >= len(self.df) - 1
 
         if self.portfolio_value < self.initial_balance * 0.1:
             terminated = True
-            step_reward -= 100.0 # heavy penalty for bankruptcy
+            if not self.is_eval:
+                step_reward -= 100.0 # heavy penalty for bankruptcy
 
         return self._get_observation(), step_reward, terminated, truncated, self._get_info()
 

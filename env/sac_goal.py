@@ -15,7 +15,7 @@ class GoalConditionedCryptoEnv(gym.Env):
     """
     metadata = {'render_modes': ['human', 'console']}
 
-    def __init__(self, df: pd.DataFrame, initial_balance=10000.0, goal_change_freq=48, custom_mean=None, custom_std=None, max_steps=8640):
+    def __init__(self, df: pd.DataFrame, initial_balance=10000.0, goal_change_freq=48, custom_mean=None, custom_std=None, max_steps=8640, is_eval=False):
         super(GoalConditionedCryptoEnv, self).__init__()
         
         self.df = df
@@ -24,6 +24,8 @@ class GoalConditionedCryptoEnv(gym.Env):
         self.total_assets = self.num_crypto_assets + 1 
         self.commission_fee_percent = 0.001
         self.goal_change_freq = goal_change_freq
+
+        self.is_eval = is_eval
         
         self.max_steps = max_steps  # =8640, 30days
         self.start_step = 0
@@ -115,12 +117,15 @@ class GoalConditionedCryptoEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
-        # randomly select start point
-        if self.max_steps is not None and len(self.df) > self.max_steps:
-            max_start_idx = len(self.df) - self.max_steps - 1
-            self.start_step = np.random.randint(0, max_start_idx)
-        else:
+        if self.is_eval:
             self.start_step = 0
+        else:
+            # randomly select start point
+            if self.max_steps is not None and len(self.df) > self.max_steps:
+                max_start_idx = len(self.df) - self.max_steps - 1
+                self.start_step = np.random.randint(0, max_start_idx)
+            else:
+                self.start_step = 0
             
         self.current_step = self.start_step
         self.cash_balance = self.initial_balance
@@ -207,12 +212,18 @@ class GoalConditionedCryptoEnv(gym.Env):
         terminated = False
         truncated = False
         
-        if self.portfolio_value < self.initial_balance * 0.1:
-            terminated = True
-        elif self.max_steps is not None and (self.current_step - self.start_step) >= self.max_steps:
-            truncated = True
-        elif self.current_step >= len(self.df) - 1:
-            truncated = True
+        if self.is_eval:
+            if self.current_step >= len(self.df) - 1:
+                terminated = True
+            elif self.portfolio_value < self.initial_balance * 0.1:
+                terminated = True
+        else:
+            if self.portfolio_value < self.initial_balance * 0.1:
+                terminated = True
+            elif self.max_steps is not None and (self.current_step - self.start_step) >= self.max_steps:
+                truncated = True
+            elif self.current_step >= len(self.df) - 1:
+                truncated = True
 
         info = self._get_info()
         info["tracking_error"] = tracking_error

@@ -6,7 +6,7 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from sac_standard import SacStandard
 from sac_risk import SacRiskAware
-from env.sac_hiro import HighLevelCryptoEnv
+from sac_hiro import HighLevelCryptoEnv
 
 
 def calculate_metrics(equity_curve, steps_per_year):
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     
     # 20% test set
     print("loading test data...")
-    data_path = os.path.join(ROOT_DIR, 'btcusd_5-min_features.csv')
+    data_path = "./env/btcusd_5-min_features.csv"
     df = pd.read_csv(data_path, index_col="Datetime", parse_dates=True).sort_index()
 
     split_idx = int(len(df) * 0.8)
@@ -102,11 +102,11 @@ if __name__ == "__main__":
             model_path=os.path.join(BASE_DIR, "standard_sac_2.zip"),
             vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_2.pkl"),
             df=test_df,
-            env_kwargs={'initial_balance': INITIAL_BALANCE}
+            env_kwargs={'initial_balance': INITIAL_BALANCE, 'is_eval': True}
         )
-        results['Step 1 (Baseline)'] = {'dates': d1, 'values': v1, 'metrics': m1}
+        results['Standard SAC'] = {'dates': d1, 'values': v1, 'metrics': m1}
     except Exception as e:
-        print(f"step 1 backtest failed or skipped: {e}")
+        print(f"standard SAC backtest failed or skipped: {e}")
 
     # backtest 2: risk-aware SAC
     try:
@@ -115,29 +115,30 @@ if __name__ == "__main__":
             model_path=os.path.join(BASE_DIR, "sac_risk_2.zip"),
             vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_risk_2.pkl"),
             df=test_df,
-            env_kwargs={'initial_balance': INITIAL_BALANCE}
+            env_kwargs={'initial_balance': INITIAL_BALANCE, 'is_eval': True}
         )
-        results['Step 2 (Risk-Aware)'] = {'dates': d2, 'values': v2, 'metrics': m2}
+        results['Risk-Aware SAC'] = {'dates': d2, 'values': v2, 'metrics': m2}
     except Exception as e:
-        print(f"step 2 backtest failed or skipped: {e}")
+        print(f"risk-aware SAC backtest failed or skipped: {e}")
 
     # backtest 3: HRL
     try:
         d4, v4, m4 = run_backtest(
             env_class=HighLevelCryptoEnv,
-            model_path=os.path.join(BASE_DIR, "./sac_hiro_2/sac_hiro.zip"),
-            vec_norm_path=os.path.join(BASE_DIR, "./sac_hiro_2/vec_normalize_sac_hiro.pkl"),
+            model_path=os.path.join(BASE_DIR, "sac_hiro_2.zip"),
+            vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_hiro_2.pkl"),
             df=test_df,
             env_kwargs={
                 'low_level_model_path': os.path.join(BASE_DIR, "sac_goal.zip"),
                 'macro_step_freq': 48,
-                'initial_balance': INITIAL_BALANCE
+                'initial_balance': INITIAL_BALANCE,
+                'is_eval': True
             },
             is_hrl=True
         )
-        results['Step 4 (HRL)'] = {'dates': d4, 'values': v4, 'metrics': m4}
+        results['HRL'] = {'dates': d4, 'values': v4, 'metrics': m4}
     except Exception as e:
-        print(f"step 4 backtest failed: {e}")
+        print(f"HRL backtest failed: {e}")
 
     # calculate another baseline (buy & hold)
     print("\ncalculating buy & hold baseline...")
@@ -161,9 +162,9 @@ if __name__ == "__main__":
     plt.title("Out-of-Sample Backtest Equity Curve Comparison", fontsize=16)
     
     colors = {
-        'Step 1 (Baseline)': 'red',
-        'Step 2 (Risk-Aware)': 'orange',
-        'Step 4 (HRL)': 'green',
+        'Standard SAC': 'red',
+        'Risk-Aware SAC': 'orange',
+        'HRL': 'green',
         'Buy & Hold BTC': 'blue'
     }
 
