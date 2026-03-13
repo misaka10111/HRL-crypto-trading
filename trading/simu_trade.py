@@ -124,21 +124,24 @@ class SimulatedTrading:
         df['Day_Sin'] = np.sin(2 * np.pi * df.index.dayofweek / 7.0)
         df['Day_Cos'] = np.cos(2 * np.pi * df.index.dayofweek / 7.0)
 
-        # Remove invalid columns and non-stationary features
-        cols_to_drop = [col for col in df.columns if col.startswith(('BBL', 'BBM', 'BBU'))]
-        cols_to_drop.extend(['timestamp', 'Open', 'High', 'Low', 'Volume', 'Close'])
-        cols_to_drop = [col for col in cols_to_drop if col in df.columns]
-        df = df.drop(columns=cols_to_drop)
+        # Explicitly define feature columns to ensure consistent ordering
+        FEATURE_COLS = [
+            'RSI_14', 
+            'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9',
+            'BBB_20_2.0_2.0', 'BBP_20_2.0_2.0',
+            'LOGRET_1', 'Vol_Change', 'High_Low_Spread',
+            'Time_Sin', 'Time_Cos', 'Day_Sin', 'Day_Cos'
+        ]
 
+        # Clean data
         df = df.replace([np.inf, -np.inf], np.nan).dropna()
-        
         if len(df) == 0:
-            raise ValueError("Insufficient K-line data, resulting in empty data after removing NaNs.")
-
-        latest_features = df.iloc[-1].values.astype(np.float32)
+            raise ValueError("Insufficient K-line data after NaN drop.")
+        
+        latest_features = df[FEATURE_COLS].iloc[-1].values.astype(np.float32)
         
         if len(latest_features) != self.num_market_features:
-            print(f"Feature dimension mismatch... Model expects {self.num_market_features} dimensions, actual is {len(latest_features)} dimensions")
+            raise ValueError(f"Feature dimension mismatch: expected {self.num_market_features}, got {len(latest_features)}.")
             
         return latest_features
     
@@ -148,8 +151,9 @@ class SimulatedTrading:
                 # Set limit to 200 to ensure MACD and BBands have enough preceding data for calculation
                 ohlcv = self.exchange.fetch_ohlcv(self.symbol, self.timeframe, limit=200)
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                df = df.iloc[:-1].copy() # Exclude the last candle which may be incomplete
+                
                 current_price = df['Close'].iloc[-1]
-
                 raw_features = self._calculate_features(df)
                 return raw_features, current_price
             
