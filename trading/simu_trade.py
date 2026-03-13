@@ -1,12 +1,13 @@
 import os
 import sys
+import csv
 import time
 import pickle
 import numpy as np
 import pandas as pd
 import pandas_ta as ta
 import ccxt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from stable_baselines3 import SAC
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,6 +36,40 @@ class SimulatedTrading:
         self.current_goal_weights = np.array([1.0, 0.0], dtype=np.float32)
         
         self._load_models()
+
+        # CSV logging
+        self.log_file = os.path.join(BASE_DIR, "trading", "dry_run_log.csv")
+        self._init_csv_log()
+
+    def _init_csv_log(self):
+        if not os.path.exists(self.log_file):
+            with open(self.log_file, mode='w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "Timestamp (UTC)", "Macro_Step", "Micro_Step", "BTC_Price", 
+                    "Total_Portfolio_Value", "Cash_Balance", "BTC_Holdings",
+                    "Target_Cash_Pct", "Target_BTC_Pct",
+                    "Actual_Cash_Pct", "Actual_BTC_Pct", "Trade_Action"
+                ])
+
+    def _log_state_to_csv(self, timestamp_str, current_price, trade_action_msg):
+        actual_weights = self.get_actual_weights(current_price)
+        with open(self.log_file, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                timestamp_str,
+                self.current_step // self.macro_step_freq,
+                self.current_step,
+                f"{current_price:.2f}",
+                f"{self.portfolio_value:.2f}",
+                f"{self.cash_balance:.2f}",
+                f"{self.crypto_holdings:.6f}",
+                f"{self.current_goal_weights[0]:.4f}",
+                f"{self.current_goal_weights[1]:.4f}",
+                f"{actual_weights[0]:.4f}",
+                f"{actual_weights[1]:.4f}",
+                trade_action_msg
+            ])
 
     def _load_models(self):
         print("Loading HRL models and normalization parameters...")
@@ -156,7 +191,8 @@ class SimulatedTrading:
         self.portfolio_value = self.cash_balance + (self.crypto_holdings * current_price)
 
     def run_step(self):
-        print(f"\n[{datetime.utcnow().strftime('%H:%M:%S')} UTC] --- Macro: {self.current_step // self.macro_step_freq} | Micro: {self.current_step} ---")
+        current_time_str = datetime.now(timezone.utc).strftime('%H:%M:%S')
+        print(f"\n[{current_time_str} UTC] --- Macro: {self.current_step // self.macro_step_freq} | Micro: {self.current_step} ---")        
         
         try:
             raw_features, current_price = self.get_realtime_features()
@@ -192,6 +228,10 @@ class SimulatedTrading:
         actual_weights_post = self.get_actual_weights(current_price)
         print(f"[Total Asset] ${self.portfolio_value:.2f} | Current Allocation: Cash {actual_weights_post[0]:.1%} | BTC {actual_weights_post[1]:.1%}")
         
+        # log to CSV
+        trade_msg = self.execute_trade_simulation(exec_weights, current_price)
+        self._log_state_to_csv(current_time_str, current_price, trade_msg)
+
         self.current_step += 1
 
     def start_loop(self):
