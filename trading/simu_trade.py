@@ -1,9 +1,12 @@
 import os
 import sys
+import time
 import pickle
 import numpy as np
 import pandas as pd
+import pandas_ta as ta
 import ccxt
+from datetime import datetime, timedelta
 from stable_baselines3 import SAC
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -54,6 +57,16 @@ class SimulatedTrading:
             
         print("Models loaded successfully.")
 
+    def _wait_for_next_candle(self):
+        now = datetime.utcnow()
+        next_minute = ((now.minute // self.timeframe_minutes) + 1) * self.timeframe_minutes
+        # Delay trigger by 5 seconds for buffer
+        next_run = now.replace(minute=0, second=5, microsecond=0) + timedelta(minutes=next_minute)
+        sleep_seconds = (next_run - now).total_seconds()
+        
+        print(f"Waiting for next candle close (Expected fetch time: {next_run.strftime('%H:%M:%S')} UTC) ...")
+        time.sleep(max(0, sleep_seconds))
+
     # Feature engineering
     def _calculate_features(self, df):
         df = df.copy()
@@ -93,3 +106,103 @@ class SimulatedTrading:
             print(f"Feature dimension mismatch... Model expects {self.num_market_features} dimensions, actual is {len(latest_features)} dimensions")
             
         return latest_features
+    
+    def get_realtime_features(self):
+        # Set limit to 200 to ensure MACD and BBands have enough preceding data for calculation
+        ohlcv = self.exchange.fetch_ohlcv(self.symbol, self.timeframe, limit=200)
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        current_price = df['Close'].iloc[-1]
+        
+        raw_features = self._calculate_features(df)
+        return raw_features, current_price
+
+    def get_actual_weights(self, current_price):
+        crypto_value = self.crypto_holdings * current_price
+        self.portfolio_value = self.cash_balance + crypto_value
+        if self.portfolio_value <= 0:
+            return np.array([1.0, 0.0], dtype=np.float32)
+        return np.array([self.cash_balance / self.portfolio_value, crypto_value / self.portfolio_value], dtype=np.float32)
+
+    def execute_trade_simulation(self, execution_weights, current_price):
+        target_crypto_value = execution_weights[1] * self.portfolio_value
+        current_crypto_value = self.crypto_holdings * current_price
+        value_diff = target_crypto_value - current_crypto_value
+        
+        # Minimum trade threshold to avoid frequent friction fees
+        if abs(value_diff) < 10.0:
+            return
+
+        if value_diff < 0:
+            trade_amount = abs(value_diff)
+            crypto_to_sell = min(trade_amount / current_price, self.crypto_holdings)
+            gross_fiat = crypto_to_sell * current_price
+            fee = gross_fiat * self.commission_fee_percent
+            
+            self.crypto_holdings -= crypto_to_sell
+            self.cash_balance += (gross_fiat - fee)
+            print(f"[Virtual Execution] Sold {crypto_to_sell:.6f} BTC | Avg Price: {current_price:.2f} | Fee: ${fee:.2f}")
+            
+        elif value_diff > 0:
+            trade_amount = min(value_diff, self.cash_balance)
+            if trade_amount > 0:
+                fee = trade_amount * self.commission_fee_percent
+                net_fiat = trade_amount - fee
+                crypto_bought = net_fiat / current_price
+                
+                self.cash_balance -= trade_amount
+                self.crypto_holdings += crypto_bought
+                print(f"[Virtual Execution] Bought {crypto_bought:.6f} BTC | Avg Price: {current_price:.2f} | Fee: ${fee:.2f}")
+
+        self.portfolio_value = self.cash_balance + (self.crypto_holdings * current_price)
+
+    def run_step(self):
+        print(f"\n[{datetime.utcnow().strftime('%H:%M:%S')} UTC] --- Macro: {self.current_step // self.macro_step_freq} | Micro: {self.current_step} ---")
+        
+        try:
+            raw_features, current_price = self.get_realtime_features()
+        except Exception as e:
+            print(f"[Network Error] Failed to fetch data or calculate features: {e}")
+            return # skip
+            
+        actual_weights = self.get_actual_weights(current_price)
+        
+        # High-level decision
+        if self.current_step % self.macro_step_freq == 0:
+            hl_raw_obs = np.concatenate([raw_features, actual_weights])
+            hl_norm_obs = np.clip((hl_raw_obs - self.hl_obs_mean) / self.hl_obs_std, -10.0, 10.0)
+            
+            macro_action, _ = self.high_level_model.predict(hl_norm_obs, deterministic=True)
+            goal_weights = np.clip(macro_action, 0.0, 1.0)
+            weight_sum = np.sum(goal_weights)
+            self.current_goal_weights = goal_weights / weight_sum if weight_sum > 0 else np.array([1.0, 0.0])
+            print(f"[High-level Manager] Set new macro goal: Cash {self.current_goal_weights[0]:.1%} | BTC {self.current_goal_weights[1]:.1%}")
+
+        # Low-level execution
+        ll_norm_features = (raw_features - self.ll_obs_mean) / self.ll_obs_std
+        ll_obs = np.concatenate([ll_norm_features, actual_weights, self.current_goal_weights])
+        
+        execution_action, _ = self.low_level_model.predict(ll_obs, deterministic=True)
+        exec_weights = np.clip(execution_action, 0.0, 1.0)
+        exec_sum = np.sum(exec_weights)
+        exec_weights = exec_weights / exec_sum if exec_sum > 0 else np.array([1.0, 0.0])
+        
+        # Ledger settlement
+        self.execute_trade_simulation(exec_weights, current_price)
+        
+        actual_weights_post = self.get_actual_weights(current_price)
+        print(f"[Total Asset] ${self.portfolio_value:.2f} | Current Allocation: Cash {actual_weights_post[0]:.1%} | BTC {actual_weights_post[1]:.1%}")
+        
+        self.current_step += 1
+
+    def start_loop(self):
+        print("Starting Kraken Dry Run simulation engine...\n")
+        try:
+            while True:
+                self.run_step()
+                self._wait_for_next_candle()
+        except KeyboardInterrupt:
+            print(f"\n\nSimulation engine terminated. Final total capital: ${self.portfolio_value:.2f}")
+
+if __name__ == "__main__":
+    trader = SimulatedTrading(symbol='BTC/USDT')
+    trader.start_loop()
