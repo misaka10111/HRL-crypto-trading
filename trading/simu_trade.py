@@ -142,12 +142,25 @@ class SimulatedTrading:
             
         return latest_features
     
-    def get_realtime_features(self):
-        # Set limit to 200 to ensure MACD and BBands have enough preceding data for calculation
-        ohlcv = self.exchange.fetch_ohlcv(self.symbol, self.timeframe, limit=200)
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
-        current_price = df['Close'].iloc[-1]
-        
+    def get_realtime_features(self, max_retries=3, retry_delay=5):
+        for attempt in range(max_retries):
+            try:
+                # Set limit to 200 to ensure MACD and BBands have enough preceding data for calculation
+                ohlcv = self.exchange.fetch_ohlcv(self.symbol, self.timeframe, limit=200)
+                df = pd.DataFrame(ohlcv, columns=['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                current_price = df['Close'].iloc[-1]
+
+                raw_features = self._calculate_features(df)
+                return raw_features, current_price
+            
+            except Exception as e:
+                print(f"[Network Error] Attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    print(f"Waiting {retry_delay} seconds before retrying...")
+                    time.sleep(retry_delay)
+                else:
+                    raise
+
         raw_features = self._calculate_features(df)
         return raw_features, current_price
 
@@ -199,8 +212,9 @@ class SimulatedTrading:
         try:
             raw_features, current_price = self.get_realtime_features()
         except Exception as e:
-            print(f"[Network Error] Failed to fetch data or calculate features: {e}")
-            return # skip
+            print(f"[Network Error] Failed to fetch data: {e}")
+            self.current_step += 1  # align to the macro cycle
+            return 
             
         actual_weights = self.get_actual_weights(current_price)
         
@@ -208,7 +222,6 @@ class SimulatedTrading:
         if self.current_step % self.macro_step_freq == 0:
             hl_raw_obs = np.concatenate([raw_features, actual_weights])
             hl_norm_obs = np.clip((hl_raw_obs - self.hl_obs_mean) / self.hl_obs_std, -10.0, 10.0)
-            
             macro_action, _ = self.high_level_model.predict(hl_norm_obs, deterministic=True)
             goal_weights = np.clip(macro_action, 0.0, 1.0)
             weight_sum = np.sum(goal_weights)
@@ -224,14 +237,12 @@ class SimulatedTrading:
         exec_sum = np.sum(exec_weights)
         exec_weights = exec_weights / exec_sum if exec_sum > 0 else np.array([1.0, 0.0])
         
-        # Ledger settlement
-        self.execute_trade_simulation(exec_weights, current_price)
+        trade_msg = self.execute_trade_simulation(exec_weights, current_price)
         
         actual_weights_post = self.get_actual_weights(current_price)
         print(f"[Total Asset] ${self.portfolio_value:.2f} | Current Allocation: Cash {actual_weights_post[0]:.1%} | BTC {actual_weights_post[1]:.1%}")
         
-        # log to CSV
-        trade_msg = self.execute_trade_simulation(exec_weights, current_price)
+        # Log to CSV
         self._log_state_to_csv(current_time_str, current_price, trade_msg)
 
         self.current_step += 1
