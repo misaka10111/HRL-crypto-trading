@@ -2,6 +2,7 @@ import os
 import sys
 import pickle
 import numpy as np
+import pandas as pd
 import ccxt
 from stable_baselines3 import SAC
 
@@ -52,3 +53,43 @@ class SimulatedTrading:
             self.hl_obs_std = np.sqrt(self.hl_obs_var + 1e-8)
             
         print("Models loaded successfully.")
+
+    # Feature engineering
+    def _calculate_features(self, df):
+        df = df.copy()
+        df['Datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('Datetime', inplace=True)
+
+        # Technical indicators
+        df.ta.rsi(length=14, append=True)
+        df.ta.macd(fast=12, slow=26, signal=9, append=True)
+        df.ta.bbands(length=20, std=2, append=True)
+        df.ta.log_return(length=1, append=True)
+        
+        df['Vol_Change'] = df['Volume'].pct_change()
+        df['High_Low_Spread'] = (df['High'] - df['Low']) / df['Close']
+
+        # Time cycle features
+        time_of_day = df.index.hour + df.index.minute / 60.0
+        df['Time_Sin'] = np.sin(2 * np.pi * time_of_day / 24.0)
+        df['Time_Cos'] = np.cos(2 * np.pi * time_of_day / 24.0)
+        df['Day_Sin'] = np.sin(2 * np.pi * df.index.dayofweek / 7.0)
+        df['Day_Cos'] = np.cos(2 * np.pi * df.index.dayofweek / 7.0)
+
+        # Remove invalid columns and non-stationary features
+        cols_to_drop = [col for col in df.columns if col.startswith(('BBL', 'BBM', 'BBU'))]
+        cols_to_drop.extend(['timestamp', 'Open', 'High', 'Low', 'Volume', 'Close'])
+        cols_to_drop = [col for col in cols_to_drop if col in df.columns]
+        df = df.drop(columns=cols_to_drop)
+
+        df = df.replace([np.inf, -np.inf], np.nan).dropna()
+        
+        if len(df) == 0:
+            raise ValueError("Insufficient K-line data, resulting in empty data after removing NaNs.")
+
+        latest_features = df.iloc[-1].values.astype(np.float32)
+        
+        if len(latest_features) != self.num_market_features:
+            print(f"Feature dimension mismatch... Model expects {self.num_market_features} dimensions, actual is {len(latest_features)} dimensions")
+            
+        return latest_features
