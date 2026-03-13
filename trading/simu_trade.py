@@ -162,33 +162,35 @@ class SimulatedTrading:
         target_crypto_value = execution_weights[1] * self.portfolio_value
         current_crypto_value = self.crypto_holdings * current_price
         value_diff = target_crypto_value - current_crypto_value
+        trade_msg = "Hold"
         
         # Minimum trade threshold to avoid frequent friction fees
-        if abs(value_diff) < 10.0:
-            return
-
-        if value_diff < 0:
-            trade_amount = abs(value_diff)
-            crypto_to_sell = min(trade_amount / current_price, self.crypto_holdings)
-            gross_fiat = crypto_to_sell * current_price
-            fee = gross_fiat * self.commission_fee_percent
-            
-            self.crypto_holdings -= crypto_to_sell
-            self.cash_balance += (gross_fiat - fee)
-            print(f"[Virtual Execution] Sold {crypto_to_sell:.6f} BTC | Avg Price: {current_price:.2f} | Fee: ${fee:.2f}")
-            
-        elif value_diff > 0:
-            trade_amount = min(value_diff, self.cash_balance)
-            if trade_amount > 0:
-                fee = trade_amount * self.commission_fee_percent
-                net_fiat = trade_amount - fee
-                crypto_bought = net_fiat / current_price
+        if abs(value_diff) >= 10.0:
+            if value_diff < 0:
+                trade_amount = abs(value_diff)
+                crypto_to_sell = min(trade_amount / current_price, self.crypto_holdings)
+                gross_fiat = crypto_to_sell * current_price
+                fee = gross_fiat * self.commission_fee_percent
                 
-                self.cash_balance -= trade_amount
-                self.crypto_holdings += crypto_bought
-                print(f"[Virtual Execution] Bought {crypto_bought:.6f} BTC | Avg Price: {current_price:.2f} | Fee: ${fee:.2f}")
+                self.crypto_holdings -= crypto_to_sell
+                self.cash_balance += (gross_fiat - fee)
+                trade_msg = f"Sold {crypto_to_sell:.6f} BTC"
+                print(f"[Virtual Execution] {trade_msg} | Avg Price: {current_price:.2f} | Fee: ${fee:.2f}")
+                
+            elif value_diff > 0:
+                trade_amount = min(value_diff, self.cash_balance)
+                if trade_amount > 0:
+                    fee = trade_amount * self.commission_fee_percent
+                    net_fiat = trade_amount - fee
+                    crypto_bought = net_fiat / current_price
+                    
+                    self.cash_balance -= trade_amount
+                    self.crypto_holdings += crypto_bought
+                    trade_msg = f"Bought {crypto_bought:.6f} BTC"
+                    print(f"[Virtual Execution] {trade_msg} | Avg Price: {current_price:.2f} | Fee: ${fee:.2f}")
 
         self.portfolio_value = self.cash_balance + (self.crypto_holdings * current_price)
+        return trade_msg
 
     def run_step(self):
         current_time_str = datetime.now(timezone.utc).strftime('%H:%M:%S')
