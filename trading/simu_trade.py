@@ -93,7 +93,7 @@ class SimulatedTrading:
         print("Models loaded successfully.")
 
     def _wait_for_next_candle(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         next_minute = ((now.minute // self.timeframe_minutes) + 1) * self.timeframe_minutes
         # Delay trigger by 5 seconds for buffer
         next_run = now.replace(minute=0, second=5, microsecond=0) + timedelta(minutes=next_minute)
