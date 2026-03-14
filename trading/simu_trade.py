@@ -182,7 +182,7 @@ class SimulatedTrading:
         trade_msg = "Hold"
         
         # Minimum trade threshold to avoid frequent friction fees
-        if abs(value_diff) >= 10.0:
+        if abs(value_diff) > 0.1: 
             if value_diff < 0:
                 trade_amount = abs(value_diff)
                 crypto_to_sell = min(trade_amount / current_price, self.crypto_holdings)
