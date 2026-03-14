@@ -3,7 +3,7 @@ import pandas
 
 def main():
     input_file = "btcusd_1-min_data.csv"
-    output_file = "btcusd_5-min_data.csv"
+    output_file = "./env/btcusd_5-min_data.csv"
     start_date = "2017-01-01"
     frequency = "5min"
     
