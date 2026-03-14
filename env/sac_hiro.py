@@ -244,7 +244,7 @@ if __name__ == "__main__":
     model = SAC(
         "MlpPolicy", 
         env, 
-        ent_coef="auto_0.1",
+        ent_coef=0.05,
         learning_rate=1e-4,
         batch_size=4096,
         buffer_size=500000,

@@ -56,7 +56,7 @@ def run_backtest(env_class, model_path, vec_norm_path, df, env_kwargs, is_hrl=Fa
     portfolio_values = []
     
     while not done:
-        action, _ = model.predict(obs, deterministic=True)
+        action, _ = model.predict(obs, deterministic=True) # type: ignore
         obs, reward, done, info_list = env.step(action)
         
         info = info_list[0]
@@ -125,8 +125,8 @@ if __name__ == "__main__":
     try:
         d4, v4, m4 = run_backtest(
             env_class=HighLevelCryptoEnv,
-            model_path=os.path.join(BASE_DIR, "sac_hiro_2.zip"),
-            vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_hiro_2.pkl"),
+            model_path=os.path.join(BASE_DIR, "sac_hiro.zip"),
+            vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_hiro.pkl"),
             df=test_df,
             env_kwargs={
                 'low_level_model_path': os.path.join(BASE_DIR, "sac_goal.zip"),
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     plt.tight_layout()
     
     # save
-    save_path = os.path.join(ROOT_DIR, "backtest_comparison.png")  # Saving image to project root
+    save_path = "./figures/backtest.png"
     plt.savefig(save_path, dpi=300)
     print(f"\ncomparison chart saved to: {save_path}")
     plt.show()
