@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 
 # Global Page Configuration
@@ -84,3 +85,42 @@ if df_history.empty:
 # Core KPI Cards
 st.markdown("### 📊 Performance Indicators")
 col1, col2, col3, col4 = st.columns(4)
+
+# Calculate real metrics from the CSV
+current_val = df_history['Portfolio_Value'].iloc[-1]
+initial_val = df_history['Portfolio_Value'].iloc[0]
+roi = ((current_val - initial_val) / initial_val) * 100
+
+# Calculate Max Drawdown
+cum_max = df_history['Portfolio_Value'].cummax()
+drawdown = (df_history['Portfolio_Value'] - cum_max) / cum_max
+max_dd = drawdown.min() * 100
+
+# Calculate Total Executed Trades
+total_trades = len(df_history[df_history['Trade_Action'] != 'Hold'])
+current_price = df_history['BTC_Price'].iloc[-1]
+
+with col1:
+    st.metric(label="Portfolio Value", value=f"${current_val:,.2f}", delta=f"{roi:.3f}% ROI")
+with col2:
+    st.metric(label="Current BTC Price", value=f"${current_price:,.2f}")
+with col3:
+    st.metric(label="Max Drawdown", value=f"{max_dd:.2f}%", delta_color="inverse")
+with col4:
+    st.metric(label="Total Executed Trades", value=f"{total_trades}")
+
+st.markdown("---")
+
+# Equity Curve
+st.markdown("### 📉 Equity Curve")
+fig_equity = px.line(
+    df_history, x='Datetime', y='Portfolio_Value', 
+    title=f"{selected_model} Portfolio Trajectory",
+    template="plotly_white",
+    labels={'Datetime': 'Time (UTC)', 'Portfolio_Value': 'Total Value ($)'}
+)
+fig_equity.update_traces(line_color='#1f77b4', line_width=2)
+fig_equity.update_xaxes(tickformat="%H:%M:%S")
+st.plotly_chart(fig_equity, use_container_width=True)
+
+st.markdown("---")
