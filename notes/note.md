@@ -86,3 +86,7 @@ Termination logic: Separate end-of-episode signals into terminated (actual portf
   - ent_coef: Entropy coefficient, SAC's automatic temperature parameter controlling policy randomness. It's typically larger early on to encourage exploration, and should gradually decrease as the policy matures.
   - ent_coef_loss: Entropy coefficient loss, the loss signal used to auto-tune the entropy coefficient, reflecting the gap between current and target policy entropy. Oscillation around zero is normal behavior.
   - learning_rate: Controls the step size of each parameter update. A fixed learning rate appears as a flat horizontal line; scheduled rates decay over time. Too large causes instability; too small causes slow convergence.
+
+## Streamlit
+
+- [deploy](https://docs.streamlit.io/deploy/streamlit-community-cloud/get-started)
