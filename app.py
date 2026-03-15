@@ -54,3 +54,33 @@ def load_real_data():
     except Exception as e:
         st.error(f"Failed to load logs: {e}")
         return pd.DataFrame(), {}, {}, pd.DataFrame()
+
+# Sidebar
+with st.sidebar:
+    st.title("⚙️ Control Panel")
+    st.markdown("### Model Configuration")
+    
+    selected_model = st.selectbox(
+        "Select Model (Ablation)",
+        ("HIRO HRL (Ours)", "Risk-aware SAC", "Baseline SAC")
+    )
+    
+    selected_asset = st.selectbox("Trading Asset", ("BTC/USDT", "ETH/USDT"))
+    
+    st.markdown("---")
+    st.info("Hierarchical Reinforcement Learning for Mid-Frequency Crypto Trading.")
+
+# Dashboard
+st.title("📈 HRL Dry Run Dashboard")
+st.markdown(f"**Current Model:** `{selected_model}` | **Asset:** `{selected_asset}`")
+
+# Fetch data
+df_history, target_w, actual_w, trade_logs = load_real_data()
+
+if df_history.empty:
+    st.warning("⏳ Waiting for simu_trade.py to generate data... Please run the trading script first.")
+    st.stop() # Stop rendering components below
+
+# Core KPI Cards
+st.markdown("### 📊 Performance Indicators")
+col1, col2, col3, col4 = st.columns(4)
