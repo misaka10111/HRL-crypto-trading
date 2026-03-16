@@ -124,3 +124,46 @@ fig_equity.update_xaxes(tickformat="%H:%M:%S")
 st.plotly_chart(fig_equity, use_container_width=True)
 
 st.markdown("---")
+
+# Policy Decomposition
+if "HRL" in selected_model:
+    st.markdown("### 🧠 Policy Decomposition")
+    col_high, col_low = st.columns(2)
+    
+    with col_high:
+        st.markdown("#### 👔 High-Level Target")
+        fig_target = px.pie(
+            values=list(target_w.values()), names=list(target_w.keys()), 
+            hole=0.4, color_discrete_sequence=['#ff9999', '#66b3ff']
+        )
+        fig_target.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+        st.plotly_chart(fig_target, use_container_width=True)
+        
+    with col_low:
+        st.markdown("#### 💻 Low-Level Execution")
+        fig_actual = px.pie(
+            values=list(actual_w.values()), names=list(actual_w.keys()), 
+            hole=0.4, color_discrete_sequence=['#ff9999', '#66b3ff']
+        )
+        fig_actual.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+        st.plotly_chart(fig_actual, use_container_width=True)
+        
+    # Tracking Error Calculation
+    tracking_error = sum(abs(target_w[k] - actual_w[k]) for k in target_w)
+    st.warning(f"**Current Low-Level Tracking Error:** {tracking_error:.4f}")
+
+else:
+    st.info("Switch to the 'HIRO HRL' model to view high/low-level policy weight comparisons.")
+
+# Recent Trade Logs
+st.markdown("### 📝 Recent Trade Logs")
+if trade_logs.empty:
+    st.write("No trades executed yet. Currently holding positions.")
+else:
+    display_logs = trade_logs.rename(columns={
+        'Timestamp (UTC)': 'Time (UTC)',
+        'Trade_Action': 'Action',
+        'BTC_Price': 'Execution Price ($)',
+        'Total_Portfolio_Value': 'Portfolio Value ($)'
+    })
+    st.dataframe(display_logs, use_container_width=True, hide_index=True)
