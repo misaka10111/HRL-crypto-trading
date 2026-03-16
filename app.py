@@ -63,10 +63,10 @@ with st.sidebar:
     
     selected_model = st.selectbox(
         "Select Model (Ablation)",
-        ("HIRO HRL (Ours)", "Risk-aware SAC", "Baseline SAC")
+        ("HRL", "Risk-aware SAC", "Standard SAC")
     )
     
-    selected_asset = st.selectbox("Trading Asset", ("BTC/USDT", "ETH/USDT"))
+    selected_asset = st.selectbox("Trading Asset", ("BTC/USDT"))
     
     st.markdown("---")
     st.info("Hierarchical Reinforcement Learning for Mid-Frequency Crypto Trading.")

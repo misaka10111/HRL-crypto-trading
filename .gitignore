@@ -1,5 +1,5 @@
 .env
-*.csv
+btcusd*.csv
 *.ign.*
 *.pyc
 __pycache__/
