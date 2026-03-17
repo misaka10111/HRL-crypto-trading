@@ -62,8 +62,8 @@ with st.sidebar:
     st.markdown("### Model Configuration")
     
     selected_model = st.selectbox(
-        "Select Model (Ablation)",
-        ("HRL", "Risk-aware SAC", "Standard SAC")
+        "Select Model",
+        ("HRL")
     )
     
     selected_asset = st.selectbox("Trading Asset", ("BTC/USDT"))
