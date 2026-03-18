@@ -210,7 +210,7 @@ class SimulatedTrading:
         return trade_msg
 
     def run_step(self):
-        current_time_str = datetime.now(timezone.utc).strftime('%H:%M:%S')
+        current_time_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         print(f"\n[{current_time_str} UTC] --- Macro: {self.current_step // self.macro_step_freq} | Micro: {self.current_step} ---")        
         
         try:

@@ -28,7 +28,7 @@ def load_real_data():
             return pd.DataFrame(), {}, {}, pd.DataFrame()
             
         # Data type conversion and cleaning
-        df['Datetime'] = pd.to_datetime(df['Timestamp (UTC)'], format='%H:%M:%S', errors='coerce')
+        df['Datetime'] = pd.to_datetime(df['Timestamp (UTC)'], errors='coerce')
         df['Portfolio_Value'] = df['Total_Portfolio_Value'].astype(float)
         df['BTC_Price'] = df['BTC_Price'].astype(float)
         
@@ -61,19 +61,19 @@ with st.sidebar:
     st.title("⚙️ Control Panel")
     st.markdown("### Model Configuration")
     
-    selected_model = st.selectbox(
+    model = st.selectbox(
         "Select Model",
         ("HRL")
     )
     
-    selected_asset = st.selectbox("Trading Asset", ("BTC/USDT"))
+    asset = st.selectbox("Trading Asset", ("BTC/USDT"))
     
     st.markdown("---")
     st.info("Hierarchical Reinforcement Learning for Mid-Frequency Crypto Trading.")
 
 # Dashboard
 st.title("📈 HRL Dry Run Dashboard")
-st.markdown(f"**Current Model:** `{selected_model}` | **Asset:** `{selected_asset}`")
+st.markdown(f"**Current Model:** `{model}` | **Asset:** `{asset}`")
 
 # Fetch data
 df_history, target_w, actual_w, trade_logs = load_real_data()
@@ -115,18 +115,18 @@ st.markdown("---")
 st.markdown("### 📉 Equity Curve")
 fig_equity = px.line(
     df_history, x='Datetime', y='Portfolio_Value', 
-    title=f"{selected_model} Portfolio Trajectory",
+    title=f"{model} Portfolio Trajectory",
     template="plotly_white",
     labels={'Datetime': 'Time (UTC)', 'Portfolio_Value': 'Total Value ($)'}
 )
 fig_equity.update_traces(line_color='#1f77b4', line_width=2)
-fig_equity.update_xaxes(tickformat="%H:%M:%S")
+fig_equity.update_xaxes(tickformat="%m-%d %H:%M")
 st.plotly_chart(fig_equity, use_container_width=True)
 
 st.markdown("---")
 
 # Policy Decomposition
-if "HRL" in selected_model:
+if "HRL" in model:
     st.markdown("### 🧠 Policy Decomposition")
     col_high, col_low = st.columns(2)
     
