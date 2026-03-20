@@ -9,6 +9,10 @@ import pandas_ta as ta
 import ccxt
 from datetime import datetime, timedelta, timezone
 from stable_baselines3 import SAC
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
@@ -37,9 +41,11 @@ class SimulatedTrading:
         
         self._load_models()
 
-        # CSV logging
-        self.log_file = os.path.join(BASE_DIR, "trading", "dry_run_log.csv")
-        self._init_csv_log()
+        # supabase client setup
+        SUPABASE_URL = os.getenv("SUPABASE_URL")
+        SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Connected to Supabase successfully.")
 
     def _init_csv_log(self):
         if not os.path.exists(self.log_file):
@@ -52,24 +58,30 @@ class SimulatedTrading:
                     "Actual_Cash_Pct", "Actual_BTC_Pct", "Trade_Action"
                 ])
 
-    def _log_state_to_csv(self, timestamp_str, current_price, trade_action_msg):
+    def _log_state_to_supabase(self, timestamp_str, current_price, trade_action_msg):
         actual_weights = self.get_actual_weights(current_price)
-        with open(self.log_file, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                timestamp_str,
-                self.current_step // self.macro_step_freq,
-                self.current_step,
-                f"{current_price:.2f}",
-                f"{self.portfolio_value:.2f}",
-                f"{self.cash_balance:.2f}",
-                f"{self.crypto_holdings:.6f}",
-                f"{self.current_goal_weights[0]:.4f}",
-                f"{self.current_goal_weights[1]:.4f}",
-                f"{actual_weights[0]:.4f}",
-                f"{actual_weights[1]:.4f}",
-                trade_action_msg
-            ])
+        
+        # Prepare data payload
+        data = {
+            "timestamp_utc": timestamp_str,
+            "macro_step": self.current_step // self.macro_step_freq,
+            "micro_step": self.current_step,
+            "btc_price": float(f"{current_price:.2f}"),
+            "total_portfolio_value": float(f"{self.portfolio_value:.2f}"),
+            "cash_balance": float(f"{self.cash_balance:.2f}"),
+            "btc_holdings": float(f"{self.crypto_holdings:.6f}"),
+            "target_cash_pct": float(f"{self.current_goal_weights[0]:.4f}"),
+            "target_btc_pct": float(f"{self.current_goal_weights[1]:.4f}"),
+            "actual_cash_pct": float(f"{actual_weights[0]:.4f}"),
+            "actual_btc_pct": float(f"{actual_weights[1]:.4f}"),
+            "trade_action": trade_action_msg
+        }
+        
+        try:
+            # Insert into Supabase table
+            self.supabase.table("trading_logs").insert(data).execute()
+        except Exception as e:
+            print(f"[Supabase Error] Failed to upload log: {e}")
 
     def _load_models(self):
         print("Loading HRL models and normalization parameters...")
