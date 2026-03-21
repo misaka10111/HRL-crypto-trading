@@ -258,8 +258,8 @@ class SimulatedTrading:
         actual_weights_post = self.get_actual_weights(current_price)
         print(f"[Total Asset] ${self.portfolio_value:.2f} | Current Allocation: Cash {actual_weights_post[0]:.1%} | BTC {actual_weights_post[1]:.1%}")
         
-        # Log to CSV
-        self._log_state_to_csv(current_time_str, current_price, trade_msg)
+        # Log to Supabase
+        self._log_state_to_supabase(current_time_str, current_price, trade_msg)
 
         self.current_step += 1
 

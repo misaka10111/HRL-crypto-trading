@@ -100,7 +100,7 @@ st.markdown(f"**Current Model:** `{model}` | **Asset:** `{asset}`")
 df_history, target_w, actual_w, trade_logs = load_real_data()
 
 if df_history.empty:
-    st.warning("⏳ Waiting for simu_trade.py to generate data... Please run the trading script first.")
+    st.warning("⏳ Waiting for data...")
     st.stop() # Stop rendering components below
 
 # Core KPI Cards
