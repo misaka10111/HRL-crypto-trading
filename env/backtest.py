@@ -125,8 +125,8 @@ if __name__ == "__main__":
     try:
         d4, v4, m4 = run_backtest(
             env_class=HighLevelCryptoEnv,
-            model_path=os.path.join(BASE_DIR, "sac_hiro.zip"),
-            vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_hiro.pkl"),
+            model_path=os.path.join(BASE_DIR, "sac_hiro_3.zip"),
+            vec_norm_path=os.path.join(BASE_DIR, "vec_normalize_sac_hiro_3.pkl"),
             df=test_df,
             env_kwargs={
                 'low_level_model_path': os.path.join(BASE_DIR, "sac_goal.zip"),
@@ -158,8 +158,10 @@ if __name__ == "__main__":
     print("="*65)
 
     # plot equity curve comparison
-    plt.figure(figsize=(14, 7))
-    plt.title("Out-of-Sample Backtest Equity Curve Comparison", fontsize=16)
+    col_labels = ['Total Return', 'Sharpe Ratio', 'Max Drawdown']
+    row_labels = []
+    table_data = []
+    row_colors = []
     
     colors = {
         'Standard SAC': 'red',
@@ -167,6 +169,16 @@ if __name__ == "__main__":
         'HRL': 'green',
         'Buy & Hold BTC': 'blue'
     }
+
+    for name, data in results.items():
+        ret, sharpe, mdd = data['metrics']
+        table_data.append([f"{ret:.2f}%", f"{sharpe:.2f}", f"{mdd:.2f}%"])
+        row_labels.append(name)
+        row_colors.append(colors.get(name, 'lightgray'))
+
+    # plot equity curve comparison
+    plt.figure(figsize=(14, 8)) 
+    plt.title("Out-of-Sample Backtest Equity Curve Comparison", fontsize=16)
 
     for name, data in results.items():
         plt.plot(data['dates'], data['values'], label=name, color=colors.get(name, 'black'), alpha=0.8, linewidth=1.5)
@@ -177,10 +189,23 @@ if __name__ == "__main__":
     plt.ylabel("Portfolio Value (USD)", fontsize=12)
     plt.legend(fontsize=12, loc='upper left')
     plt.grid(True, alpha=0.3)
-    plt.tight_layout()
     
+    table = plt.table(cellText=table_data,
+                      rowLabels=row_labels,
+                      rowColours=row_colors,
+                      colLabels=col_labels,
+                      colColours=['lightgray'] * 3,
+                      cellLoc='center',
+                      loc='bottom',
+                      bbox=[0.2, -0.35, 0.8, 0.25])
+                      
+    table.auto_set_font_size(False)
+    table.set_fontsize(11)
+    
+    plt.subplots_adjust(bottom=0.3) 
+        
     # save
     save_path = "./figures/backtest.png"
-    plt.savefig(save_path, dpi=300)
-    print(f"\ncomparison chart saved to: {save_path}")
+    plt.savefig(save_path, dpi=300, bbox_inches='tight') 
+    print(f"\ncomparison chart with metrics saved to: {save_path}")
     plt.show()
