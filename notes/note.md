@@ -54,13 +54,13 @@
     - [Random episode slicing](https://arxiv.org/abs/1804.00379): Introduce a max_steps limit (e.g., 8640 steps or 30 days) and a randomized start_step in reset(). This breaks reliance on a fixed starting point, prevents historical overfitting, and ensures the replay buffer contains diverse market conditions.
     - [Reward density](https://www.geeksforgeeks.org/machine-learning/sparse-rewards-in-reinforcement-learning/): Condensing episodes from multi-year marathons to 30-day windows provides a much denser reward signal, accelerating agent convergence.
     - Termination logic: Separate end-of-episode signals into terminated (actual portfolio ruin/bankruptcy) and truncated (reaching the max_steps time limit or EOF). This accurately reflects the MDP state and aligns with standard [Gymnasium API practices](https://farama.org/Gymnasium-Terminated-Truncated-Step-API).
-12. HIRO 1 figure:
+12. Goal-conditioned SAC 2 figure:
     - episode length rises and stabilizes around 8640
     - average reward improves from -12000 to around -3000, still trending upward
     - entropy coefficient collapse before 400k steps
     - ep_rew_mean not converged
 13. Inference: need to turn off exploration; freeze the normalizer; disable reward normalization
-14. HIRO 2 changes:
+14. HIRO 3 changes:
     - Improved critic network convergence: Increasing the batch_size to 4096 significantly reduces the variance in gradient updates, allowing the value estimation network (Critic) to learn a much more accurate and stable representation of the noisy financial data environment.
     - Prolonged exploration phase: By adjusting the hyperparameters, the entropy coefficient (ent_coef) decreases much more gradually, preventing the agent from prematurely collapsing into a deterministic, suboptimal policy and ensuring it thoroughly explores different portfolio weight allocations.
     - While the absolute profit remains slightly negative, the overall trend in ep_rew_mean and the smoothed final_portfolio_value indicates a more robust and slightly better-performing strategy in the long run compared to previous iterations.
