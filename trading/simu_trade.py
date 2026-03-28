@@ -1,11 +1,10 @@
 import os
 import sys
-import csv
 import time
 import pickle
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
+import pandas_ta as ta # df.ta
 import ccxt
 from datetime import datetime, timedelta, timezone
 from stable_baselines3 import SAC
@@ -247,7 +246,7 @@ class SimulatedTrading:
         trade_msg = self.execute_trade_simulation(exec_weights, current_price)
         
         actual_weights_post = self.get_actual_weights(current_price)
-        print(f"[Total Asset] ${self.portfolio_value:.2f} | Current Allocation: Cash {actual_weights_post[0]:.1%} | BTC {actual_weights_post[1]:.1%}")
+        print(f"[Total Asset] ${self.portfolio_value:.2f} | [Allocation]: Cash {actual_weights_post[0]:.1%} | BTC {actual_weights_post[1]:.1%}")
         
         # Log to Supabase
         self._log_state_to_supabase(current_time_str, current_price, trade_msg)

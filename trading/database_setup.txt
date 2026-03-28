@@ -13,3 +13,4 @@ create table trading_logs (
   actual_btc_pct numeric,
   trade_action text
 );
+ALTER TABLE public.trading_logs ENABLE ROW LEVEL SECURITY;
