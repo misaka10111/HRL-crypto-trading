@@ -41,22 +41,13 @@ class SimulatedTrading:
         
         self._load_models()
 
-        # supabase client setup
+        # Supabase client setup
         SUPABASE_URL = os.getenv("SUPABASE_URL")
         SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY environment variables")
         self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("Connected to Supabase successfully.")
-
-    def _init_csv_log(self):
-        if not os.path.exists(self.log_file):
-            with open(self.log_file, mode='w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    "Timestamp (UTC)", "Macro_Step", "Micro_Step", "BTC_Price", 
-                    "Total_Portfolio_Value", "Cash_Balance", "BTC_Holdings",
-                    "Target_Cash_Pct", "Target_BTC_Pct",
-                    "Actual_Cash_Pct", "Actual_BTC_Pct", "Trade_Action"
-                ])
 
     def _log_state_to_supabase(self, timestamp_str, current_price, trade_action_msg):
         actual_weights = self.get_actual_weights(current_price)
@@ -236,7 +227,7 @@ class SimulatedTrading:
         
         # High-level decision
         if self.current_step % self.macro_step_freq == 0:
-            hl_raw_obs = np.concatenate([raw_features, actual_weights])
+            hl_raw_obs = np.concatenate([np.asarray(raw_features), np.asarray(actual_weights)])
             hl_norm_obs = np.clip((hl_raw_obs - self.hl_obs_mean) / self.hl_obs_std, -10.0, 10.0)
             macro_action, _ = self.high_level_model.predict(hl_norm_obs, deterministic=True)
             goal_weights = np.clip(macro_action, 0.0, 1.0)
