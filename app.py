@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -23,7 +24,7 @@ def init_connection():
 
 supabase = init_connection()
 
-@st.cache_data(ttl=10) 
+@st.cache_data(ttl=10) # time to live = 10s
 def load_real_data():
     """
     Fetch real-time logs from Supabase database
@@ -188,3 +189,6 @@ else:
         'Total_Portfolio_Value': 'Portfolio Value ($)'
     })
     st.dataframe(display_logs, use_container_width=True, hide_index=True)
+
+time.sleep(300)
+st.rerun()
