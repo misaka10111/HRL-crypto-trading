@@ -1,11 +1,15 @@
 import os
-import time
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from supabase import create_client, Client
+
+
+# Refresh every 5 minutes
+st_autorefresh(interval=300000, key="data_refresh")
 
 # Global Page Configuration
 st.set_page_config(
@@ -189,6 +193,3 @@ else:
         'Total_Portfolio_Value': 'Portfolio Value ($)'
     })
     st.dataframe(display_logs, use_container_width=True, hide_index=True)
-
-time.sleep(300)
-st.rerun()
